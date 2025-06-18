@@ -28,38 +28,52 @@ export default function BoutiquePage() {
   const [produits, setProduits] = useState<Produit[]>([]);
   const [panier, setPanier] = useState<Produit[]>([]);
 
-  // Charger boutique et produits liés
   useEffect(() => {
-    // Récupérer la boutique du localStorage
+    // Ne s'exécute que côté client (navigateur)
+    if (typeof window === 'undefined') return;
+
+    // Charger la boutique depuis le localStorage
     const boutiqueStorage = localStorage.getItem('ma-boutique');
     if (boutiqueStorage) {
       const boutiqueData: Boutique = JSON.parse(boutiqueStorage);
       if (boutiqueData.id === id) {
         setBoutique(boutiqueData);
+      } else {
+        setBoutique(null);
       }
+    } else {
+      setBoutique(null);
     }
 
-    // Récupérer tous les produits et filtrer ceux de la boutique
+    // Charger les produits de la boutique
     const produitsStorage = localStorage.getItem('produits');
     if (produitsStorage) {
       const produitsData: Produit[] = JSON.parse(produitsStorage);
       const produitsBoutique = produitsData.filter(p => p.boutiqueId === id);
       setProduits(produitsBoutique);
+    } else {
+      setProduits([]);
     }
 
-    // Charger le panier existant
+    // Charger le panier
     const panierStorage = localStorage.getItem('panier');
     if (panierStorage) {
       setPanier(JSON.parse(panierStorage));
+    } else {
+      setPanier([]);
     }
   }, [id]);
 
-  // Ajouter produit au panier
+  // Ajouter produit au panier en évitant les doublons
   const ajouterAuPanier = (produit: Produit) => {
+    if (panier.find(p => p.id === produit.id)) {
+      alert(`Le produit "${produit.nom}" est déjà dans le panier.`);
+      return;
+    }
     const nouveauPanier = [...panier, produit];
     setPanier(nouveauPanier);
     localStorage.setItem('panier', JSON.stringify(nouveauPanier));
-    alert(Produit "${produit.nom}" ajouté au panier !);
+    alert(`Produit "${produit.nom}" ajouté au panier !`);
   };
 
   if (!boutique) {
@@ -77,7 +91,7 @@ export default function BoutiquePage() {
         {boutique.logo && (
           <img
             src={boutique.logo}
-            alt={Logo de ${boutique.nom}}
+            alt={`Logo de ${boutique.nom}`}
             className="w-24 h-24 rounded object-cover"
           />
         )}

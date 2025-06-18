@@ -15,7 +15,7 @@ export default function ConversationDetail() {
   const [nouveauMessage, setNouveauMessage] = useState("");
 
   useEffect(() => {
-    const data = localStorage.getItem(messages-${id});
+    const data = localStorage.getItem(`messages-${id}`);
     if (data) {
       setMessages(JSON.parse(data));
     }
@@ -32,7 +32,7 @@ export default function ConversationDetail() {
 
     const nouveauxMessages = [...messages, message];
     setMessages(nouveauxMessages);
-    localStorage.setItem(messages-${id}, JSON.stringify(nouveauxMessages));
+    localStorage.setItem(`messages-${id}`, JSON.stringify(nouveauxMessages));
     setNouveauMessage("");
   };
 
@@ -68,3 +68,4 @@ export default function ConversationDetail() {
     </main>
   );
 }
+

@@ -11,7 +11,7 @@ export default function VoiturePage() {
       return;
     }
 
-    alert(Voiture commandée de "${depart}" vers "${destination}");
+    alert(`Voiture commandée de "${depart}" vers "${destination}"`);
   };
 
   return (
