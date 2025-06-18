@@ -20,9 +20,7 @@ export default function ProduitDetail() {
     router.push(`/conversations/new?produitId=${produit.id}&vendeurId=${produit.vendeurId}`)
   }
 
-  if (!produit) {
-    return <div className="p-4 text-white bg-black">Chargement...</div>
-  }
+  if (!produit) return <div className="p-4 text-white bg-black">Chargement...</div>
 
   return (
     <div className="p-4 bg-black text-white min-h-screen">
