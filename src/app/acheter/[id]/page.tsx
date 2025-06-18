@@ -1,6 +1,13 @@
-import ProduitDetail from './ProduitDetail'
+type Props = {
+  params: {
+    id: string;
+  };
+};
 
-export default function Page() {
-  return <ProduitDetail />
+export default function Page({ params }: Props) {
+  return (
+    <div>
+      <h1>Produit ID : {params.id}</h1>
+    </div>
+  );
 }
-
