@@ -1,5 +1,5 @@
-import { Metadata } from 'next'
 import ProduitDetail from './ProduitDetail'
+import type { Metadata } from 'next'
 
 export function generateMetadata({ params }: { params: { id: string } }): Metadata {
   return {
