@@ -1,23 +1,19 @@
-import { Metadata } from 'next';
+import { Metadata } from 'next'
+import ProduitDetail from './ProduitDetail'
 
-type Props = {
+type PageProps = {
   params: {
-    id: string;
-  };
-};
+    id: string
+  }
+}
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   return {
     title: `Produit ${params.id}`,
-  };
+  }
 }
 
-export default async function Page({ params }: Props) {
-  const { id } = params;
-
-  return (
-    <div>
-      <h1>Produit ID : {id}</h1>
-    </div>
-  );
+export default async function Page({ params }: PageProps) {
+  return <ProduitDetail id={params.id} />
 }
+

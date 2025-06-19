@@ -1,12 +1,14 @@
 'use client'
 
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-export default function ProduitDetail() {
+type Props = {
+  id: string
+}
+
+export default function ProduitDetail({ id }: Props) {
   const router = useRouter()
-  const params = useParams()
-  const id = params.id as string
   const [produit, setProduit] = useState<any>(null)
 
   useEffect(() => {
@@ -37,3 +39,4 @@ export default function ProduitDetail() {
     </div>
   )
 }
+
