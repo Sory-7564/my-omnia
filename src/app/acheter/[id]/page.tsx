@@ -9,4 +9,3 @@ type PageProps = {
 export default function Page({ params }: PageProps) {
   return <ProduitDetail id={params.id} />
 }
-
