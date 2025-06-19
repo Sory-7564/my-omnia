@@ -1,17 +1,18 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-type Props = {
-  id: string
-}
-
-export default function ProduitDetail({ id }: Props) {
+export default function ProduitDetail() {
   const router = useRouter()
+  const pathname = usePathname()
   const [produit, setProduit] = useState<any>(null)
 
+  // Extraire l'id depuis l'URL
+  const id = pathname?.split('/').pop()
+
   useEffect(() => {
+    if (!id) return
     const produits = JSON.parse(localStorage.getItem('produits') || '[]')
     const item = produits.find((p: any) => p.id === id)
     setProduit(item)
