@@ -39,4 +39,3 @@ export default function ProduitDetail({ id }: Props) {
     </div>
   )
 }
-
