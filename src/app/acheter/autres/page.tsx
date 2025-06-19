@@ -1,25 +1,32 @@
-"use client";
-import { useEffect, useState } from "react";
+"use client"
+import { useEffect, useState } from "react"
+
+type Produit = {
+  id: string
+  nom: string
+  categorie: string
+  description?: string
+  prix?: number
+  photo?: string
+}
 
 export default function Autres() {
-  const [produits, setProduits] = useState([]);
-  const [search, setSearch] = useState("");
-  const [categorieFiltre, setCategorieFiltre] = useState("");
+  const [produits, setProduits] = useState<Produit[]>([])
+  const [search, setSearch] = useState("")
+  const [categorieFiltre, setCategorieFiltre] = useState("")
 
   useEffect(() => {
-    const produitsEnregistres = JSON.parse(localStorage.getItem("produits") || "[]");
-    setProduits(produitsEnregistres);
-  }, []);
+    const produitsEnregistres: Produit[] = JSON.parse(localStorage.getItem("produits") || "[]")
+    setProduits(produitsEnregistres)
+  }, [])
 
-  // Extraire catégories uniques
-  const categoriesDisponibles = [...new Set(produits.map((p) => p.categorie))];
+  const categoriesDisponibles = [...new Set(produits.map((p) => p.categorie))]
 
-  // Filtrage intelligent : par recherche et éventuellement par catégorie
   const produitsFiltres = produits.filter((p) => {
-    const correspondRecherche = p.nom.toLowerCase().includes(search.toLowerCase());
-    const correspondCategorie = categorieFiltre ? p.categorie === categorieFiltre : true;
-    return correspondRecherche && correspondCategorie;
-  });
+    const correspondRecherche = p.nom.toLowerCase().includes(search.toLowerCase())
+    const correspondCategorie = categorieFiltre ? p.categorie === categorieFiltre : true
+    return correspondRecherche && correspondCategorie
+  })
 
   return (
     <main className="p-4 bg-black min-h-screen text-white">
@@ -75,5 +82,5 @@ export default function Autres() {
         ))}
       </div>
     </main>
-  );
+  )
 }
