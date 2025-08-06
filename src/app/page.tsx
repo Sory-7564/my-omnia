@@ -122,7 +122,7 @@ export default function AccueilPage() {
       <header className="flex justify-between items-center px-4 pt-4">
         <h1 className="text-2xl font-bold">Omnia</h1>
         {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
-        <a href="/notifications" className="text-xl">🔔</a>
+      
       </header>
 
       {/* Recherche */}
