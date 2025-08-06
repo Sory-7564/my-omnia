@@ -1,159 +1,273 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
-export default function Home() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [date, setDate] = useState<Date | null>(null);
-  const [menuOuvert, setMenuOuvert] = useState(false);
+export default function AccueilPage() {
+  const [produits, setProduits] = useState<any[]>([])
+  const [filtered, setFiltered] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const [prenom, setPrenom] = useState('')
+  const [nom, setNom] = useState('')
+  const [search, setSearch] = useState('')
+  const [categorieActive, setCategorieActive] = useState('Tout')
+  const [villeFilter, setVilleFilter] = useState('')
+  const [quartierFilter, setQuartierFilter] = useState('')
+  const router = useRouter()
+
+  const categories = [
+    'Tout', 'Nourriture', 'Électronique', 'Vêtements', 'Chaussures', 'Maison',
+    'Auto', 'Gaming', 'Sport', 'Cuisine', 'Livres', 'Outils', 'Bijoux', 'Animaux', 'Autres'
+  ]
 
   useEffect(() => {
-    const timer = setInterval(() => setDate(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const fetchData = async () => {
+      try {
+        setLoading(true)
 
-  const heure = date?.toLocaleTimeString();
-  const dateDuJour = date?.toLocaleDateString();
+        // Auth : récupération session utilisateur
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) {
+          router.push('/auth/login')
+          return
+        }
+        setUser(session.user)
 
-  const toggleMenu = () => {
-    setMenuOuvert(!menuOuvert);
-  };
+        // Récupérer nom + prénom depuis la table users
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select('prenom, nom')
+          .eq('id', session.user.id)
+          .single()
 
-  const handleDeconnexion = () => {
-    signOut({ callbackUrl: "/auth/login" }); // Redirige vers la page de connexion
-  };
+        if (userError) {
+          console.error('Erreur récupération user:', userError)
+        } else if (userInfo) {
+          setPrenom(userInfo.prenom)
+          setNom(userInfo.nom)
+        }
+
+        // Récupérer produits + vendeur + médias
+        const { data: produitsData, error } = await supabase
+          .from('produits')
+          .select(`
+            id, nom, description, prix, categorie, created_at, user_id,
+            users (prenom, ville, quartier, image),
+            images_produits (url, type)
+          `)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        const enrichis = (produitsData || []).map(p => ({
+          ...p,
+          vendeur: p.users,
+          images: (p.images_produits || []).map(img => {
+            const publicUrl = supabase.storage.from('produits').getPublicUrl(img.url).data.publicUrl
+            return {
+              url: publicUrl,
+              type: img.type || (img.url.endsWith('.mp4') ? 'video' : 'image')
+            }
+          })
+        }))
+
+        setProduits(enrichis)
+        setFiltered(enrichis)
+      } catch (err) {
+        console.error('Erreur chargement accueil:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [router])
+
+  const applyFilters = (searchText: string, cat: string, ville = '', quartier = '') => {
+    let filtres = [...produits]
+
+    if (cat !== 'Tout') {
+      filtres = filtres.filter(p => p.categorie === cat)
+    }
+
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase()
+      filtres = filtres.filter(p =>
+        p.nom?.toLowerCase().includes(q) ||
+        p.categorie?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q)
+      )
+    }
+
+    if (ville.trim()) {
+      filtres = filtres.filter(p =>
+        p.vendeur?.ville?.toLowerCase().includes(ville.toLowerCase())
+      )
+    }
+
+    if (quartier.trim()) {
+      filtres = filtres.filter(p =>
+        p.vendeur?.quartier?.toLowerCase().includes(quartier.toLowerCase())
+      )
+    }
+
+    setFiltered(filtres)
+  }
 
   return (
-    <main className="w-screen min-h-screen font-sans bg-black text-white flex flex-col items-center p-6 gap-5">
-      {/* Entête */}
-      <header className="w-full bg-gray-900 p-4 rounded-lg shadow flex flex-col sm:flex-row justify-between items-start sm:items-center relative">
-        <div>
-          <h1 className="text-xl font-bold">Bienvenue sur Omnia</h1>
-          <h2 className="text-lg font-semibold">
-            Bonjour {session?.user?.email || "Invité"}
-          </h2>
-          {date && <p>{dateDuJour} - {heure}</p>}
-        </div>
-
-        {/* Icône ⚙ + menu déroulant */}
-        <div className="relative mt-4 sm:mt-0">
-          <button onClick={toggleMenu} className="text-white text-2xl">⚙</button>
-          {menuOuvert && (
-            <div className="absolute right-0 mt-2 w-48 bg-white text-black rounded shadow-md z-10">
-              <button
-                className="block px-4 py-2 w-full text-left hover:bg-gray-200"
-                onClick={() => alert("Profil à venir")}
-              >
-                👤 Mon profil
-              </button>
-              <button
-                className="block px-4 py-2 w-full text-left hover:bg-gray-200"
-                onClick={() => alert("Paramètres à venir")}
-              >
-                ⚙ Paramètres
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ✅ Bouton Déconnexion si session active */}
-        {status === "authenticated" && (
-          <button
-            onClick={handleDeconnexion}
-            className="absolute top-4 right-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-white z-20"
-          >
-            🔓 Se déconnecter
-          </button>
-        )}
+    <main className="min-h-screen bg-zinc-950 text-white pb-24">
+      {/* Header */}
+      <header className="flex justify-between items-center px-4 pt-4">
+        <h1 className="text-2xl font-bold">Omnia</h1>
+        {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
+        <a href="/notifications" className="text-xl">🔔</a>
       </header>
 
-      {/* Section Pub */}
-      <section className="w-full">
-        <div className="rounded-xl overflow-hidden text-white p-4">
-          <h3 className="text-lg font-semibold mb-2">PUB</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <Link
-                key={i}
-                href="https://wa.me/22370581725?text=Bonjour%2C%20je%20suis%20int%C3%A9ress%C3%A9%20par%20ton%20offre%20sur%20Omnia"
-                target="_blank"
-              >
-                <div className="cursor-pointer">
-                  <video
-                    className="w-full h-32 sm:h-40 rounded-lg shadow border border-white p-1"
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                  >
-                    <source src="/videos/pub.mp4" type="video/mp4" />
-                    Votre navigateur ne supporte pas la lecture de vidéos.
-                  </video>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Question principale */}
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold">Que désirez-vous aujourd’hui ?</h2>
+      {/* Recherche */}
+      <div className="px-4 mt-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            applyFilters(e.target.value, categorieActive, villeFilter, quartierFilter)
+          }}
+          placeholder="Rechercher un produit ou une catégorie"
+          className="w-full p-3 rounded-xl bg-zinc-800 text-white placeholder-zinc-400 outline-none"
+        />
       </div>
 
-      {/* Options */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-24 w-full max-w-xl">
-        <Link href="/acheter">
-          <div className="bg-blue-800 p-6 rounded-xl shadow hover:shadow-lg cursor-pointer text-center">
-            <h2 className="text-2xl font-semibold text-white">Acheter</h2>
-            <p className="mt-2 text-gray-300">Explorer les produits à acheter</p>
+      {/* Filtres ville/quartier */}
+      <div className="px-4 mt-2 flex gap-2">
+        <input
+          type="text"
+          value={villeFilter}
+          onChange={(e) => {
+            setVilleFilter(e.target.value)
+            applyFilters(search, categorieActive, e.target.value, quartierFilter)
+          }}
+          placeholder="Filtrer par ville"
+          className="w-1/2 p-2 rounded-xl bg-zinc-800 text-white"
+        />
+        <input
+          type="text"
+          value={quartierFilter}
+          onChange={(e) => {
+            setQuartierFilter(e.target.value)
+            applyFilters(search, categorieActive, villeFilter, e.target.value)
+          }}
+          placeholder="Filtrer par quartier"
+          className="w-1/2 p-2 rounded-xl bg-zinc-800 text-white"
+        />
+      </div>
+
+      {/* Catégories */}
+      <div className="px-4 mt-4 overflow-x-auto whitespace-nowrap scrollbar-hide space-x-2">
+        {categories.map((cat, index) => (
+          <button
+            key={index}
+            onClick={() => {
+              setCategorieActive(cat)
+              applyFilters(search, cat, villeFilter, quartierFilter)
+            }}
+            className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
+              categorieActive === cat ? 'bg-blue-600' : 'bg-zinc-800 hover:bg-zinc-700'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Produits */}
+      <section className="mt-6 px-4">
+        {loading ? (
+          <p className="text-center text-zinc-500">Chargement...</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-zinc-400 mt-10">Aucun produit trouvé.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {filtered.map((produit) => (
+              <div key={produit.id} className="bg-zinc-900 rounded-xl p-2 text-sm">
+                {/* Vendeur */}
+                {produit.vendeur && (
+                  <div
+                    className="flex items-center gap-2 mb-2 cursor-pointer"
+                    onClick={() => router.push(`/profil/${produit.user_id}`)}
+                  >
+                    <img
+                      src={produit.vendeur.image || '/default-avatar.png'}
+                      alt="Vendeur"
+                      className="w-6 h-6 rounded-full object-cover"
+                    />
+                    <div className="text-xs font-semibold">
+                      {produit.vendeur.prenom}
+                      <div className="text-[10px] text-zinc-400">
+                        {produit.vendeur.ville}, {produit.vendeur.quartier}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Images / vidéos */}
+                <div className="overflow-x-auto flex gap-2 mb-2">
+                  {produit.images.length > 0 ? (
+                    produit.images.map((media: any, index: number) =>
+                      media.type === 'video' ? (
+                        <video
+                          key={index}
+                          src={media.url}
+                          className="w-44 h-32 object-cover rounded-lg cursor-pointer"
+                          onClick={() => router.push(`/produit/${produit.id}`)}
+                          muted
+                          loop
+                          autoPlay
+                        />
+                      ) : (
+                        <img
+                          key={index}
+                          src={media.url}
+                          alt="produit"
+                          className="w-44 h-32 object-cover rounded-lg cursor-pointer"
+                          onClick={() => router.push(`/produit/${produit.id}`)}
+                        />
+                      )
+                    )
+                  ) : (
+                    <div className="w-44 h-32 bg-zinc-800 flex items-center justify-center rounded-lg text-zinc-500 text-xs">
+                      Pas de média
+                    </div>
+                  )}
+                </div>
+
+                {/* Infos produit */}
+                <h2 className="font-semibold truncate">{produit.nom}</h2>
+                <p className="text-[13px] text-zinc-400">{produit.categorie}</p>
+                <p className="text-green-400 font-bold text-sm">{produit.prix} FCFA</p>
+
+                {/* Bouton contacter */}
+                <button
+                  onClick={() => router.push(`/messages/${produit.user_id}`)}
+                  className="mt-2 w-full text-xs bg-blue-700 text-white py-1 rounded-lg"
+                >
+                  Contacter le vendeur
+                </button>
+              </div>
+            ))}
           </div>
-        </Link>
-        <Link href="/vendre">
-          <div className="bg-green-800 p-6 rounded-xl shadow hover:shadow-lg cursor-pointer text-center">
-            <h2 className="text-2xl font-semibold text-white">Vendre</h2>
-            <p className="mt-2 text-gray-300">Publier un produit à vendre</p>
-          </div>
-        </Link>
-        <Link href="/reservation">
-          <div className="bg-yellow-800 p-6 rounded-xl shadow hover:shadow-lg cursor-pointer text-center">
-            <h2 className="text-2xl font-semibold text-white">Réservation</h2>
-            <p className="mt-2 text-gray-300">Réserver un Appartement ou Hôtel</p>
-          </div>
-        </Link>
+        )}
       </section>
 
-      {/* Menu bas */}
-      <footer className="bg-gray-800 text-white p-4 rounded-t-lg flex justify-around fixed bottom-0 left-0 right-0">
-        <Link href="/">
-          <div className="text-center cursor-pointer">
-            <p>🏠</p>
-            <p className="text-sm">Accueil</p>
-          </div>
-        </Link>
-        <Link href="/notifications">
-          <div className="text-center cursor-pointer">
-            <p>🔔</p>
-            <p className="text-sm">Notifications</p>
-          </div>
-        </Link>
-        <Link href="/conversations">
-          <div className="text-center cursor-pointer">
-            <p>📥</p>
-            <p className="text-sm">Conversations</p>
-          </div>
-        </Link>
-        <Link href="/boutiques">
-          <div className="text-center cursor-pointer">
-            <p>🏬</p>
-            <p className="text-sm">Boutiques</p>
-          </div>
-        </Link>
-      </footer>
+      {/* Navigation bas */}
+      <nav className="fixed bottom-0 w-full bg-zinc-900 border-t border-zinc-800 text-white flex justify-around py-2 z-50">
+        <a href="/">🏠</a>
+        <a href="/explorer">🔍</a>
+        <a href="/publier" className="text-3xl">➕</a>
+        <a href="/messages">💬</a>
+        <a href="/profil">👤</a>
+      </nav>
     </main>
-  );
+  )
 }
