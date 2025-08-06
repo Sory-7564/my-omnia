@@ -4,9 +4,29 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
+type Produit = {
+  id: string;
+  nom: string;
+  description: string;
+  prix: number;
+  categorie: string;
+  created_at: string;
+  user_id: string;
+  vendeur: {
+    prenom: string;
+    ville: string;
+    quartier: string;
+    image: string;
+  };
+  images: {
+    url: string;
+    type: string;
+  }[];
+}
+
 export default function AccueilPage() {
-  const [produits, setProduits] = useState<any[]>([])
-  const [filtered, setFiltered] = useState<any[]>([])
+  const [produits, setProduits] = useState<Produit[]>([])
+  const [filtered, setFiltered] = useState<Produit[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [prenom, setPrenom] = useState('')
@@ -27,7 +47,6 @@ export default function AccueilPage() {
       try {
         setLoading(true)
 
-        // Auth : récupération session utilisateur
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
           router.push('/auth/login')
@@ -35,22 +54,18 @@ export default function AccueilPage() {
         }
         setUser(session.user)
 
-        // Récupérer nom + prénom depuis la table users
-        const { data: userInfo, error: userError } = await supabase
+        const { data: userInfo } = await supabase
           .from('users')
           .select('prenom, nom')
           .eq('id', session.user.id)
           .single()
 
-        if (userError) {
-          console.error('Erreur récupération user:', userError)
-        } else if (userInfo) {
+        if (userInfo) {
           setPrenom(userInfo.prenom)
           setNom(userInfo.nom)
         }
 
-        // Récupérer produits + vendeur + médias
-        const { data: produitsData, error } = await supabase
+        const { data: produitsData } = await supabase
           .from('produits')
           .select(`
             id, nom, description, prix, categorie, created_at, user_id,
@@ -59,12 +74,10 @@ export default function AccueilPage() {
           `)
           .order('created_at', { ascending: false })
 
-        if (error) throw error
-
-        const enrichis = (produitsData || []).map(p => ({
+        const enrichis = (produitsData || []).map((p: any) => ({
           ...p,
           vendeur: p.users,
-          images: (p.images_produits || []).map(img => {
+          images: (p.images_produits || []).map((img: any) => {
             const publicUrl = supabase.storage.from('produits').getPublicUrl(img.url).data.publicUrl
             return {
               url: publicUrl,
@@ -83,7 +96,7 @@ export default function AccueilPage() {
     }
 
     fetchData()
-  }, [router])
+  }, [])
 
   const applyFilters = (searchText: string, cat: string, ville = '', quartier = '') => {
     let filtres = [...produits]
@@ -122,7 +135,6 @@ export default function AccueilPage() {
       <header className="flex justify-between items-center px-4 pt-4">
         <h1 className="text-2xl font-bold">Omnia</h1>
         {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
-      
       </header>
 
       {/* Recherche */}
@@ -211,10 +223,10 @@ export default function AccueilPage() {
                   </div>
                 )}
 
-                {/* Images / vidéos */}
+                {/* Médias */}
                 <div className="overflow-x-auto flex gap-2 mb-2">
                   {produit.images.length > 0 ? (
-                    produit.images.map((media: any, index: number) =>
+                    produit.images.map((media, index) =>
                       media.type === 'video' ? (
                         <video
                           key={index}
@@ -242,12 +254,11 @@ export default function AccueilPage() {
                   )}
                 </div>
 
-                {/* Infos produit */}
+                {/* Infos */}
                 <h2 className="font-semibold truncate">{produit.nom}</h2>
                 <p className="text-[13px] text-zinc-400">{produit.categorie}</p>
                 <p className="text-green-400 font-bold text-sm">{produit.prix} FCFA</p>
 
-                {/* Bouton contacter */}
                 <button
                   onClick={() => router.push(`/messages/${produit.user_id}`)}
                   className="mt-2 w-full text-xs bg-blue-700 text-white py-1 rounded-lg"
@@ -260,7 +271,7 @@ export default function AccueilPage() {
         )}
       </section>
 
-      {/* Navigation bas */}
+      {/* Navigation */}
       <nav className="fixed bottom-0 w-full bg-zinc-900 border-t border-zinc-800 text-white flex justify-around py-2 z-50">
         <a href="/">🏠</a>
         <a href="/explorer">🔍</a>
