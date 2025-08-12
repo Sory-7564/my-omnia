@@ -36,6 +36,7 @@ export default function ProduitPage() {
 
   useEffect(() => {
     if (!id) return
+    let channel: any = null
 
     const fetchData = async () => {
       try {
@@ -73,12 +74,14 @@ export default function ProduitPage() {
         })
         setMedia(fichiers)
 
+        // likes total depuis `aime`
         const { count: likeCount } = await supabase
           .from('aime')
           .select('*', { count: 'exact', head: true })
           .eq('produit_id', id)
         setLikesTotal(likeCount || 0)
 
+        // liked par l'utilisateur ?
         const { data: userLike } = await supabase
           .from('aime')
           .select('*')
@@ -87,6 +90,7 @@ export default function ProduitPage() {
           .maybeSingle()
         setLiked(!!userLike)
 
+        // ratings (inchangés)
         const { data: userRating } = await supabase
           .from('ratings')
           .select('rating')
@@ -105,6 +109,7 @@ export default function ProduitPage() {
           setTotalRatings(allRatings.length)
         }
 
+        // commentaires (inchangés)
         const { data: commentsData } = await supabase
           .from('commentaires')
           .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
@@ -117,6 +122,30 @@ export default function ProduitPage() {
           .select('*')
         setCommentLikes(likesCommentaires || [])
 
+        // abonnement realtime sur `aime` pour ce produit
+        channel = supabase
+          .channel('realtime-aime-produit-' + id)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'aime' },
+            (payload: any) => {
+              const rec = payload.record
+              const ev = payload.eventType
+              if (!rec) return
+              // seule action si concerne ce produit
+              if (rec.produit_id !== id) return
+
+              if (ev === 'INSERT') {
+                setLikesTotal(prev => prev + 1)
+                if (rec.user_id === sessionUser.id) setLiked(true)
+              } else if (ev === 'DELETE') {
+                setLikesTotal(prev => Math.max(0, prev - 1))
+                if (rec.user_id === sessionUser.id) setLiked(false)
+              }
+            }
+          )
+          .subscribe()
+
         setLoading(false)
       } catch (err) {
         console.error('❌ Erreur chargement produit :', err)
@@ -125,18 +154,40 @@ export default function ProduitPage() {
     }
 
     fetchData()
+
+    return () => {
+      try {
+        if (channel) {
+          // @ts-ignore
+          if (supabase.removeChannel) supabase.removeChannel(channel)
+          // @ts-ignore
+          if (channel.unsubscribe) channel.unsubscribe()
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }, [id, router])
 
   const handleLike = async () => {
     if (!user || !produit) return
     if (liked) {
-      await supabase.from('aime').delete().eq('produit_id', produit.id).eq('user_id', user.id)
+      const { error } = await supabase.from('aime').delete().eq('produit_id', produit.id).eq('user_id', user.id)
+      if (error) {
+        console.error('Erreur suppression like:', error)
+        return
+      }
+      // optimistic update — realtime subscription will also sync
       setLiked(false)
-      setLikesTotal(likesTotal - 1)
+      setLikesTotal(prev => Math.max(0, prev - 1))
     } else {
-      await supabase.from('aime').insert({ produit_id: produit.id, user_id: user.id })
+      const { error } = await supabase.from('aime').insert({ produit_id: produit.id, user_id: user.id })
+      if (error) {
+        console.error('Erreur insertion like:', error)
+        return
+      }
       setLiked(true)
-      setLikesTotal(likesTotal + 1)
+      setLikesTotal(prev => prev + 1)
     }
   }
 
@@ -162,7 +213,13 @@ export default function ProduitPage() {
     })
     setNewComment('')
     setReplyTo(null)
-    location.reload()
+    // recharger commentaires (location.reload was utilisé avant) — on recharge proprement
+    const { data: commentsData } = await supabase
+      .from('commentaires')
+      .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
+      .eq('produit_id', produit.id)
+      .order('created_at', { ascending: true })
+    setCommentaires(commentsData || [])
   }
 
   const toggleLikeComment = async (commentId: string) => {
@@ -215,7 +272,13 @@ export default function ProduitPage() {
               {c.user_id === user?.id && (
                 <button onClick={async () => {
                   await supabase.from('commentaires').delete().eq('id', c.id)
-                  location.reload()
+                  // reload comments
+                  const { data: commentsData } = await supabase
+                    .from('commentaires')
+                    .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
+                    .eq('produit_id', produit.id)
+                    .order('created_at', { ascending: true })
+                  setCommentaires(commentsData || [])
                 }} className="text-red-400">Supprimer</button>
               )}
             </div>

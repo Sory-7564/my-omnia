@@ -27,6 +27,9 @@ type Produit = {
 export default function AccueilPage() {
   const [produits, setProduits] = useState<Produit[]>([])
   const [filtered, setFiltered] = useState<Produit[]>([])
+  const [likes, setLikes] = useState<{ [key: string]: number }>({})
+  const [userLikes, setUserLikes] = useState<{ [key: string]: boolean }>({})
+  const [commentsCount, setCommentsCount] = useState<{ [key: string]: number }>({})
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [prenom, setPrenom] = useState('')
@@ -35,14 +38,18 @@ export default function AccueilPage() {
   const [categorieActive, setCategorieActive] = useState('Tout')
   const [villeFilter, setVilleFilter] = useState('')
   const [quartierFilter, setQuartierFilter] = useState('')
+  const [notifCount, setNotifCount] = useState(0) // Notifications non lues dynamiques
   const router = useRouter()
 
   const categories = [
-    'Tout', 'Nourriture', 'Électronique', 'Vêtements', 'Chaussures', 'Maison',
+    'Tout', 'Nourriture', 'Voitures', 'Électronique', 'Vêtements', 'Chaussures', 'Maison',
     'Auto', 'Gaming', 'Sport', 'Cuisine', 'Livres', 'Outils', 'Bijoux', 'Animaux', 'Autres'
   ]
 
   useEffect(() => {
+    let channelAime: any = null
+    let channelNotif: any = null
+
     const fetchData = async () => {
       try {
         setLoading(true)
@@ -54,6 +61,7 @@ export default function AccueilPage() {
         }
         setUser(session.user)
 
+        // user info
         const { data: userInfo } = await supabase
           .from('users')
           .select('prenom, nom')
@@ -65,6 +73,7 @@ export default function AccueilPage() {
           setNom(userInfo.nom)
         }
 
+        // produits + enrichissement medias & vendeur
         const { data: produitsData } = await supabase
           .from('produits')
           .select(`
@@ -88,6 +97,94 @@ export default function AccueilPage() {
 
         setProduits(enrichis)
         setFiltered(enrichis)
+
+        // Charger likes depuis la table `aime`
+        const { data: aimeData } = await supabase
+          .from('aime')
+          .select('produit_id, user_id')
+
+        const likesCount: { [key: string]: number } = {}
+        const userLikeStatus: { [key: string]: boolean } = {}
+        aimeData?.forEach((l: any) => {
+          likesCount[l.produit_id] = (likesCount[l.produit_id] || 0) + 1
+          if (l.user_id === session.user.id) userLikeStatus[l.produit_id] = true
+        })
+        setLikes(likesCount)
+        setUserLikes(userLikeStatus)
+
+        // Charger nombre de commentaires (tous)
+        const { data: commentsData } = await supabase
+          .from('commentaires')
+          .select('id, produit_id')
+
+        const commentsCountMap: { [key: string]: number } = {}
+        commentsData?.forEach((c: any) => {
+          commentsCountMap[c.produit_id] = (commentsCountMap[c.produit_id] || 0) + 1
+        })
+        setCommentsCount(commentsCountMap)
+
+        // Charger notifications non lues dynamiques
+        const { data: notifData, error: notifErr } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .eq('lu', false)
+
+        if (notifErr) console.error('Erreur chargement notifications:', notifErr)
+        else setNotifCount(notifData?.length || 0)
+
+        // *** Abonnement realtime sur la table `aime` ***
+        channelAime = supabase
+          .channel('realtime-aime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'aime' },
+            (payload: any) => {
+              const rec = payload.record
+              const ev = payload.eventType
+              if (!rec) return
+              const pid = rec.produit_id
+              setLikes(prev => {
+                const current = prev[pid] || 0
+                let next = current
+                if (ev === 'INSERT') next = current + 1
+                if (ev === 'DELETE') next = Math.max(0, current - 1)
+                return { ...prev, [pid]: next }
+              })
+              setUserLikes(prev => {
+                if (rec.user_id === session.user.id && payload.eventType === 'INSERT') {
+                  return { ...prev, [rec.produit_id]: true }
+                }
+                if (rec.user_id === session.user.id && payload.eventType === 'DELETE') {
+                  return { ...prev, [rec.produit_id]: false }
+                }
+                return prev
+              })
+            }
+          )
+          .subscribe()
+
+        // *** Abonnement realtime sur la table `notifications` ***
+        channelNotif = supabase
+          .channel('realtime-notifs')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'notifications' },
+            (payload: any) => {
+              if (payload.eventType === 'INSERT' && payload.new.user_id === session.user.id) {
+                setNotifCount(prev => prev + 1)
+              }
+              if (
+                payload.eventType === 'UPDATE' &&
+                payload.new.user_id === session.user.id &&
+                payload.new.lu === true
+              ) {
+                setNotifCount(prev => Math.max(0, prev - 1))
+              }
+            }
+          )
+          .subscribe()
+
       } catch (err) {
         console.error('Erreur chargement accueil:', err)
       } finally {
@@ -96,7 +193,48 @@ export default function AccueilPage() {
     }
 
     fetchData()
+
+    return () => {
+      try {
+        if (channelAime) {
+          if (supabase.removeChannel) supabase.removeChannel(channelAime)
+          if (channelAime.unsubscribe) channelAime.unsubscribe()
+        }
+        if (channelNotif) {
+          if (supabase.removeChannel) supabase.removeChannel(channelNotif)
+          if (channelNotif.unsubscribe) channelNotif.unsubscribe()
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }, [])
+
+  const toggleLike = async (produitId: string) => {
+    if (!user) return
+    if (userLikes[produitId]) {
+      const { error } = await supabase
+        .from('aime')
+        .delete()
+        .match({ produit_id: produitId, user_id: user.id })
+      if (error) {
+        console.error('Erreur suppression like:', error)
+        return
+      }
+      setLikes(prev => ({ ...prev, [produitId]: Math.max(0, (prev[produitId] || 1) - 1) }))
+      setUserLikes(prev => ({ ...prev, [produitId]: false }))
+    } else {
+      const { error } = await supabase
+        .from('aime')
+        .insert({ produit_id: produitId, user_id: user.id })
+      if (error) {
+        console.error('Erreur insertion like:', error)
+        return
+      }
+      setLikes(prev => ({ ...prev, [produitId]: (prev[produitId] || 0) + 1 }))
+      setUserLikes(prev => ({ ...prev, [produitId]: true }))
+    }
+  }
 
   const applyFilters = (searchText: string, cat: string, ville = '', quartier = '') => {
     let filtres = [...produits]
@@ -132,9 +270,30 @@ export default function AccueilPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-white pb-24">
       {/* Header */}
-      <header className="flex justify-between items-center px-4 pt-4">
+      <header className="flex justify-between items-center px-4 pt-4 relative">
         <h1 className="text-2xl font-bold">Omnia</h1>
         {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
+
+        {/* Cloche notifications */}
+        <button
+          onClick={() => router.push('/notifications')}
+          className="absolute right-4 top-4 text-white relative"
+          aria-label="Notifications"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          {notifCount > 0 && (
+            <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-600" />
+          )}
+        </button>
       </header>
 
       {/* Recherche */}
@@ -258,6 +417,23 @@ export default function AccueilPage() {
                 <h2 className="font-semibold truncate">{produit.nom}</h2>
                 <p className="text-[13px] text-zinc-400">{produit.categorie}</p>
                 <p className="text-green-400 font-bold text-sm">{produit.prix} FCFA</p>
+
+                {/* Boutons Like + Commentaire */}
+                <div className="flex items-center justify-between mt-2">
+                  <button
+                    onClick={() => toggleLike(produit.id)}
+                    className="flex items-center gap-1"
+                    aria-label={userLikes[produit.id] ? 'Retirer like' : 'Ajouter like'}
+                  >
+                    <span className="text-xl">
+                      {userLikes[produit.id] ? '❤️' : '♡'}
+                    </span>
+                    <span>{likes[produit.id] || 0}</span>
+                  </button>
+                  <div className="flex items-center gap-1 text-zinc-400 text-sm">
+                    💬 <span>{commentsCount[produit.id] || 0}</span>
+                  </div>
+                </div>
 
                 <button
                   onClick={() => router.push(`/messages/${produit.user_id}`)}
