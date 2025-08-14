@@ -136,10 +136,12 @@ export default function MessagesPage() {
   const handleDeleteConversation = async (conversationId: string) => {
     if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return
 
+    const [id1, id2] = conversationId.split('_')
+
     const { error } = await supabase
       .from('messages')
       .delete()
-      .or(`conversation_id.eq.${conversationId}`)
+      .or(`and(sender_id.eq.${id1},receiver_id.eq.${id2}),and(sender_id.eq.${id2},receiver_id.eq.${id1})`)
 
     if (error) {
       console.error('Erreur lors de la suppression:', error.message)
