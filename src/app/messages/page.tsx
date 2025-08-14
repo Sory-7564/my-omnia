@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { Trash2 } from 'lucide-react'
 
 type User = {
   id: string
@@ -133,22 +132,21 @@ export default function MessagesPage() {
     router.push(`/messages/${otherUserId}`)
   }
 
+  // Supprimer une conversation entière
   const handleDeleteConversation = async (conversationId: string) => {
-    if (!user) return
-    const confirmDelete = window.confirm("Voulez-vous vraiment supprimer cette conversation ?")
-    if (!confirmDelete) return
+    if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return
 
     const { error } = await supabase
-      .from("messages")
+      .from('messages')
       .delete()
-      .eq("conversation_id", conversationId)
+      .or(`conversation_id.eq.${conversationId}`)
 
     if (error) {
-      console.error("Erreur suppression:", error.message)
-      return
+      console.error('Erreur lors de la suppression:', error.message)
+      alert("Erreur lors de la suppression.")
+    } else {
+      setConversations(prev => prev.filter(c => c.conversation_id !== conversationId))
     }
-
-    setConversations(prev => prev.filter(c => c.conversation_id !== conversationId))
   }
 
   const filteredConversations = conversations.filter(conv => {
@@ -203,21 +201,17 @@ export default function MessagesPage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-4">
+                <div
+                  className="flex items-center gap-4 cursor-pointer"
+                  onClick={() => handleOpenConversation(conv.conversation_id)}
+                >
                   <img
                     src={otherUser?.image || '/default-avatar.png'}
                     alt={`${otherUser?.prenom || ''} ${otherUser?.nom || ''}`}
-                    className="w-12 h-12 rounded-full object-cover cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      router.push(`/profil/${otherUserId}`)
-                    }}
+                    className="w-12 h-12 rounded-full object-cover"
                   />
 
-                  <div
-                    className="flex-1 cursor-pointer"
-                    onClick={() => handleOpenConversation(conv.conversation_id)}
-                  >
+                  <div className="flex-1">
                     <p className="font-semibold truncate">
                       {otherUser ? `${otherUser.prenom} ${otherUser.nom}` : 'Utilisateur'}
                     </p>
@@ -225,18 +219,6 @@ export default function MessagesPage() {
                       {conv.last_message || 'Aucun message'}
                     </p>
                   </div>
-
-                  {/* Bouton suppression */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteConversation(conv.conversation_id)
-                    }}
-                    className="p-2 hover:bg-red-600 rounded-full"
-                    title="Supprimer cette conversation"
-                  >
-                    <Trash2 className="w-5 h-5 text-red-400" />
-                  </button>
 
                   <p className="text-xs text-zinc-400 text-right whitespace-nowrap">
                     {conv.last_date
@@ -250,6 +232,14 @@ export default function MessagesPage() {
                       : ''}
                   </p>
                 </div>
+
+                {/* Bouton supprimer */}
+                <button
+                  onClick={() => handleDeleteConversation(conv.conversation_id)}
+                  className="mt-2 text-red-500 text-sm hover:underline self-end"
+                >
+                  Supprimer la conversation
+                </button>
               </li>
             )
           })}
