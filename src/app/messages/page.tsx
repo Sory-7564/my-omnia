@@ -132,7 +132,6 @@ export default function MessagesPage() {
     router.push(`/messages/${otherUserId}`)
   }
 
-  // Supprimer une conversation entière via la fonction SQL
   const handleDeleteConversation = async (conversationId: string) => {
     if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return
 
@@ -197,9 +196,21 @@ export default function MessagesPage() {
                     <img
                       src={sender.image || '/default-avatar.png'}
                       alt={`${sender.prenom} ${sender.nom}`}
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="w-8 h-8 rounded-full object-cover cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/profil/${sender.id}`)
+                      }}
                     />
-                    <p className="font-semibold">{sender.prenom} {sender.nom}</p>
+                    <p
+                      className="font-semibold cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/profil/${sender.id}`)
+                      }}
+                    >
+                      {sender.prenom} {sender.nom}
+                    </p>
                   </div>
                 )}
 
@@ -210,11 +221,18 @@ export default function MessagesPage() {
                   <img
                     src={otherUser?.image || '/default-avatar.png'}
                     alt={`${otherUser?.prenom || ''} ${otherUser?.nom || ''}`}
-                    className="w-12 h-12 rounded-full object-cover"
+                    className="w-12 h-12 rounded-full object-cover cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      router.push(`/profil/${otherUser?.id}`)
+                    }}
                   />
 
                   <div className="flex-1">
-                    <p className="font-semibold truncate">
+                    <p className="font-semibold truncate cursor-pointer" onClick={(e) => {
+                      e.stopPropagation()
+                      router.push(`/profil/${otherUser?.id}`)
+                    }}>
                       {otherUser ? `${otherUser.prenom} ${otherUser.nom}` : 'Utilisateur'}
                     </p>
                     <p className="text-sm text-zinc-400 truncate">
