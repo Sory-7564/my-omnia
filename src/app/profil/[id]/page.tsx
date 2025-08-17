@@ -126,7 +126,7 @@ export default function ProfilAutrePage() {
           {products.map(prod => (
             <div
               key={prod.id}
-              onClick={() => router.push(`/produit/${prod.id}`)} // ✅ Redirection vers page produit
+              onClick={() => router.push(`/produit/${prod.id}`)}
               className="bg-zinc-800 rounded-lg p-3 cursor-pointer hover:border hover:border-blue-500 transition"
             >
               {prod.medias?.[0] && prod.medias[0].url && (
@@ -154,11 +154,3 @@ export default function ProfilAutrePage() {
     </main>
   )
 }
-
-
-
- 
-
- 
- 
- 
