@@ -70,7 +70,6 @@ export default function ConversationPage() {
       const authUser = session?.user
       if (!authUser) return router.push('/auth/login')
 
-      // Construire User local depuis user_metadata
       setUser({
         id: authUser.id,
         prenom: (authUser.user_metadata as any)?.prenom || 'Utilisateur',
@@ -78,7 +77,6 @@ export default function ConversationPage() {
         image: (authUser.user_metadata as any)?.image || '/default-avatar.png'
       })
 
-      // Info de l'autre utilisateur
       const { data: other } = await supabase
         .from('users')
         .select('id, prenom, nom, image')
@@ -86,7 +84,6 @@ export default function ConversationPage() {
         .single()
       setOtherUser(other as User | null)
 
-      // Charger messages de la conversation
       const { data: msgs } = await supabase
         .from('messages')
         .select('*')
@@ -96,14 +93,12 @@ export default function ConversationPage() {
       setLoading(false)
       scrollToBottom()
 
-      // Marquer comme lus (les messages reçus)
       await supabase
         .from('messages')
         .update({ vu: true })
         .eq('receiver_id', authUser.id)
         .eq('sender_id', otherUserId)
 
-      // Realtime
       const channel = supabase
         .channel('messages-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, async (payload) => {
@@ -114,7 +109,6 @@ export default function ConversationPage() {
               (msg.sender_id === otherUserId && msg.receiver_id === authUser.id)
             if (isThisConv) {
               setMessages(prev => [...prev, msg])
-              // si c'est un message entrant, le marquer lu immédiatement
               if (msg.receiver_id === authUser.id) {
                 await supabase.from('messages').update({ vu: true }).eq('id', msg.id)
               }
@@ -163,6 +157,15 @@ export default function ConversationPage() {
       if (inserted) {
         setMessages(prev => [...prev, inserted as Message])
         scrollToBottom()
+        // 🚀 Ajouter notification
+        await supabase.from('notifications').insert({
+          user_id: otherUserId,
+          sender_id: user.id,
+          type: 'message',
+          message: newMessage,
+          vu: false,
+          created_at: new Date().toISOString()
+        })
       }
       setNewMessage('')
     }
@@ -195,16 +198,20 @@ export default function ConversationPage() {
       if (insertedMedia) {
         setMessages(prev => [...prev, insertedMedia as Message])
         scrollToBottom()
+        // 🚀 Ajouter notification
+        await supabase.from('notifications').insert({
+          user_id: otherUserId,
+          sender_id: user.id,
+          type: 'media',
+          message: type,
+          vu: false,
+          created_at: new Date().toISOString()
+        })
       }
     }
   }
 
-  // -------------------- SUPPRESSION (soft delete) --------------------
-  const handleDeleteMessage = async (msgId: string) => {
-    await supabase.from('messages').update({ supprimer: true }).eq('id', msgId)
-  }
-
-  // -------------------- AUDIO (appui long) --------------------
+  // -------------------- AUDIO --------------------
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -219,8 +226,6 @@ export default function ConversationPage() {
 
       mediaRecorder.onstop = async () => {
         if (!user) return
-
-        // couper le micro proprement
         currentStreamRef.current?.getTracks().forEach(t => t.stop())
         currentStreamRef.current = null
 
@@ -247,6 +252,15 @@ export default function ConversationPage() {
         if (insertedAudio) {
           setMessages(prev => [...prev, insertedAudio as Message])
           scrollToBottom()
+          // 🚀 Ajouter notification
+          await supabase.from('notifications').insert({
+            user_id: otherUserId,
+            sender_id: user.id,
+            type: 'audio',
+            message: 'audio',
+            vu: false,
+            created_at: new Date().toISOString()
+          })
         }
 
         setRecordingTime(0)
@@ -287,6 +301,10 @@ export default function ConversationPage() {
     setPreviewMedia(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDeleteMessage = async (msgId: string) => {
+    await supabase.from('messages').update({ supprimer: true }).eq('id', msgId)
+  }
+
   if (loading) return <p className="text-white text-center mt-10">Chargement...</p>
 
   // -------------------- RENDER --------------------
@@ -318,13 +336,11 @@ export default function ConversationPage() {
               }`}
             >
               <div className="text-xs font-semibold mb-1">{senderName}</div>
-
               {msg.supprimer ? (
                 <p className="italic text-sm text-gray-300">Message supprimé</p>
               ) : (
                 <>
                   {msg.contenu && <p className="whitespace-pre-wrap">{msg.contenu}</p>}
-
                   {msg.audio_url && (
                     <div className="flex items-center gap-2 mt-1">
                       <audio src={msg.audio_url} controls />
@@ -333,7 +349,6 @@ export default function ConversationPage() {
                       )}
                     </div>
                   )}
-
                   {msg.media_url && (
                     msg.media_type === 'image' ? (
                       <img
@@ -352,7 +367,6 @@ export default function ConversationPage() {
                   )}
                 </>
               )}
-
               <div className="text-[10px] text-right mt-1 text-gray-200">
                 {new Date(msg.created_at).toLocaleString('fr-FR')}
                 {isSender && msg.vu && <span className="ml-1">✅</span>}
@@ -363,7 +377,7 @@ export default function ConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Aperçu des fichiers avant envoi */}
+      {/* Aperçu fichiers */}
       {previewMedia.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
           {previewMedia.map((file, index) => {

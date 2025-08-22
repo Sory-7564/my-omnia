@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -24,12 +24,16 @@ type Produit = {
   }[];
 }
 
+type LikesMap = { [key: string]: number }
+type UserLikesMap = { [key: string]: boolean }
+type CommentsMap = { [key: string]: number }
+
 export default function AccueilPage() {
   const [produits, setProduits] = useState<Produit[]>([])
   const [filtered, setFiltered] = useState<Produit[]>([])
-  const [likes, setLikes] = useState<{ [key: string]: number }>({})
-  const [userLikes, setUserLikes] = useState<{ [key: string]: boolean }>({})
-  const [commentsCount, setCommentsCount] = useState<{ [key: string]: number }>({})
+  const [likes, setLikes] = useState<LikesMap>({})
+  const [userLikes, setUserLikes] = useState<UserLikesMap>({})
+  const [commentsCount, setCommentsCount] = useState<CommentsMap>({})
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [prenom, setPrenom] = useState('')
@@ -38,7 +42,13 @@ export default function AccueilPage() {
   const [categorieActive, setCategorieActive] = useState('Tout')
   const [villeFilter, setVilleFilter] = useState('')
   const [quartierFilter, setQuartierFilter] = useState('')
-  const [notifCount, setNotifCount] = useState(0) // Notifications non lues dynamiques
+  const [notifCount, setNotifCount] = useState(0) // non lues
+
+  // ✨ Ajouts
+  const [sort, setSort] = useState<'recent' | 'prixAsc' | 'prixDesc' | 'plusLikes'>('recent')
+  const [visibleCount, setVisibleCount] = useState(12)
+  const loadingMoreRef = useRef<HTMLDivElement | null>(null)
+
   const router = useRouter()
 
   const categories = [
@@ -62,19 +72,20 @@ export default function AccueilPage() {
         setUser(session.user)
 
         // user info
-        const { data: userInfo } = await supabase
+        const { data: userInfo, error: userErr } = await supabase
           .from('users')
           .select('prenom, nom')
           .eq('id', session.user.id)
           .single()
 
+        if (userErr) console.error('[users] error:', userErr)
         if (userInfo) {
           setPrenom(userInfo.prenom)
           setNom(userInfo.nom)
         }
 
         // produits + enrichissement medias & vendeur
-        const { data: produitsData } = await supabase
+        const { data: produitsData, error: produitsErr } = await supabase
           .from('produits')
           .select(`
             id, nom, description, prix, categorie, created_at, user_id,
@@ -83,14 +94,16 @@ export default function AccueilPage() {
           `)
           .order('created_at', { ascending: false })
 
-        const enrichis = (produitsData || []).map((p: any) => ({
+        if (produitsErr) console.error('[produits] error:', produitsErr)
+
+        const enrichis: Produit[] = (produitsData || []).map((p: any) => ({
           ...p,
           vendeur: p.users,
           images: (p.images_produits || []).map((img: any) => {
             const publicUrl = supabase.storage.from('produits').getPublicUrl(img.url).data.publicUrl
             return {
               url: publicUrl,
-              type: img.type || (img.url.endsWith('.mp4') ? 'video' : 'image')
+              type: img.type || (img.url?.endsWith?.('.mp4') ? 'video' : 'image')
             }
           })
         }))
@@ -99,12 +112,14 @@ export default function AccueilPage() {
         setFiltered(enrichis)
 
         // Charger likes depuis la table `aime`
-        const { data: aimeData } = await supabase
+        const { data: aimeData, error: aimeErr } = await supabase
           .from('aime')
           .select('produit_id, user_id')
 
-        const likesCount: { [key: string]: number } = {}
-        const userLikeStatus: { [key: string]: boolean } = {}
+        if (aimeErr) console.error('[aime] error:', aimeErr)
+
+        const likesCount: LikesMap = {}
+        const userLikeStatus: UserLikesMap = {}
         aimeData?.forEach((l: any) => {
           likesCount[l.produit_id] = (likesCount[l.produit_id] || 0) + 1
           if (l.user_id === session.user.id) userLikeStatus[l.produit_id] = true
@@ -113,37 +128,74 @@ export default function AccueilPage() {
         setUserLikes(userLikeStatus)
 
         // Charger nombre de commentaires (tous)
-        const { data: commentsData } = await supabase
+        const { data: commentsData, error: commentsErr } = await supabase
           .from('commentaires')
           .select('id, produit_id')
 
-        const commentsCountMap: { [key: string]: number } = {}
+        if (commentsErr) console.error('[commentaires] error:', commentsErr)
+
+        const commentsCountMap: CommentsMap = {}
         commentsData?.forEach((c: any) => {
           commentsCountMap[c.produit_id] = (commentsCountMap[c.produit_id] || 0) + 1
         })
         setCommentsCount(commentsCountMap)
 
-        // Charger notifications non lues dynamiques
-        const { data: notifData, error: notifErr } = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('user_id', session.user.id)
-          .eq('lu', false)
+        // ⚡ Notifications — stratégie robuste (is_read OU lu) avec fallback
+        let unreadCount = 0
+        try {
+          const { data, error } = await supabase
+            .from('notifications')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .eq('is_read', false)
+          if (error) throw error
+          unreadCount = data?.length || 0
+          console.log('[notifications] using is_read, count =', unreadCount)
+        } catch (e1) {
+          console.warn('[notifications] is_read query failed, trying lu:', e1)
+          try {
+            const { data, error } = await supabase
+              .from('notifications')
+              .select('id')
+              .eq('user_id', session.user.id)
+              .eq('lu', false)
+            if (error) throw error
+            unreadCount = data?.length || 0
+            console.log('[notifications] using lu, count =', unreadCount)
+          } catch (e2) {
+            console.warn('[notifications] both filtered queries failed, fallback select *:', e2)
+            const { data, error } = await supabase
+              .from('notifications')
+              .select('*')
+              .eq('user_id', session.user.id)
+            if (error) {
+              console.error('Erreur chargement notifications (fallback):', error)
+            } else {
+              unreadCount = (data || []).filter((n: any) => {
+                const hasIsRead = Object.prototype.hasOwnProperty.call(n, 'is_read')
+                const hasLu = Object.prototype.hasOwnProperty.call(n, 'lu')
+                if (hasIsRead) return n.is_read === false
+                if (hasLu) return n.lu === false
+                return false
+              }).length
+              console.log('[notifications] fallback count =', unreadCount)
+            }
+          }
+        }
+        setNotifCount(unreadCount)
 
-        if (notifErr) console.error('Erreur chargement notifications:', notifErr)
-        else setNotifCount(notifData?.length || 0)
-
-        // *** Abonnement realtime sur la table `aime` ***
+        // *** Abonnement realtime sur la table `aime` *** (compat new/old vs record)
         channelAime = supabase
           .channel('realtime-aime')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'aime' },
             (payload: any) => {
-              const rec = payload.record
-              const ev = payload.eventType
+              const rec = (payload.new ?? payload.record)
+              const ev: string = payload.eventType
               if (!rec) return
               const pid = rec.produit_id
+
               setLikes(prev => {
                 const current = prev[pid] || 0
                 let next = current
@@ -151,11 +203,12 @@ export default function AccueilPage() {
                 if (ev === 'DELETE') next = Math.max(0, current - 1)
                 return { ...prev, [pid]: next }
               })
+
               setUserLikes(prev => {
-                if (rec.user_id === session.user.id && payload.eventType === 'INSERT') {
+                if (rec.user_id === session?.user?.id && ev === 'INSERT') {
                   return { ...prev, [rec.produit_id]: true }
                 }
-                if (rec.user_id === session.user.id && payload.eventType === 'DELETE') {
+                if (rec.user_id === session?.user?.id && ev === 'DELETE') {
                   return { ...prev, [rec.produit_id]: false }
                 }
                 return prev
@@ -164,22 +217,26 @@ export default function AccueilPage() {
           )
           .subscribe()
 
-        // *** Abonnement realtime sur la table `notifications` ***
+        // *** Abonnement realtime sur la table `notifications` *** (is_read OU lu)
         channelNotif = supabase
           .channel('realtime-notifs')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'notifications' },
             (payload: any) => {
-              if (payload.eventType === 'INSERT' && payload.new.user_id === session.user.id) {
+              console.log('[notifications] realtime payload:', payload)
+              const n = payload.new ?? payload.record
+              if (!n || n.user_id !== session?.user?.id) return
+
+              if (payload.eventType === 'INSERT') {
                 setNotifCount(prev => prev + 1)
               }
-              if (
-                payload.eventType === 'UPDATE' &&
-                payload.new.user_id === session.user.id &&
-                payload.new.lu === true
-              ) {
-                setNotifCount(prev => Math.max(0, prev - 1))
+
+              if (payload.eventType === 'UPDATE') {
+                const readValue = (n.lu ?? n.is_read)
+                if (readValue === true) {
+                  setNotifCount(prev => Math.max(0, prev - 1))
+                }
               }
             }
           )
@@ -197,46 +254,22 @@ export default function AccueilPage() {
     return () => {
       try {
         if (channelAime) {
-          if (supabase.removeChannel) supabase.removeChannel(channelAime)
+          if ((supabase as any).removeChannel) (supabase as any).removeChannel(channelAime)
           if (channelAime.unsubscribe) channelAime.unsubscribe()
         }
         if (channelNotif) {
-          if (supabase.removeChannel) supabase.removeChannel(channelNotif)
+          if ((supabase as any).removeChannel) (supabase as any).removeChannel(channelNotif)
           if (channelNotif.unsubscribe) channelNotif.unsubscribe()
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const toggleLike = async (produitId: string) => {
-    if (!user) return
-    if (userLikes[produitId]) {
-      const { error } = await supabase
-        .from('aime')
-        .delete()
-        .match({ produit_id: produitId, user_id: user.id })
-      if (error) {
-        console.error('Erreur suppression like:', error)
-        return
-      }
-      setLikes(prev => ({ ...prev, [produitId]: Math.max(0, (prev[produitId] || 1) - 1) }))
-      setUserLikes(prev => ({ ...prev, [produitId]: false }))
-    } else {
-      const { error } = await supabase
-        .from('aime')
-        .insert({ produit_id: produitId, user_id: user.id })
-      if (error) {
-        console.error('Erreur insertion like:', error)
-        return
-      }
-      setLikes(prev => ({ ...prev, [produitId]: (prev[produitId] || 0) + 1 }))
-      setUserLikes(prev => ({ ...prev, [produitId]: true }))
-    }
-  }
-
-  const applyFilters = (searchText: string, cat: string, ville = '', quartier = '') => {
+  // Tri et filtres (reprend ta logique et ajoute le tri)
+  const applyFilters = (searchText: string, cat: string, ville = '', quartier = '', tri = sort) => {
     let filtres = [...produits]
 
     if (cat !== 'Tout') {
@@ -264,8 +297,88 @@ export default function AccueilPage() {
       )
     }
 
+    // Tri
+    if (tri === 'prixAsc') filtres.sort((a, b) => (a.prix || 0) - (b.prix || 0))
+    if (tri === 'prixDesc') filtres.sort((a, b) => (b.prix || 0) - (a.prix || 0))
+    if (tri === 'recent') filtres.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    if (tri === 'plusLikes') {
+      filtres.sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0))
+    }
+
     setFiltered(filtres)
+    setVisibleCount(12)
   }
+
+  // Re-appliquer le tri "plus likés" si les likes changent
+  useEffect(() => {
+    if (sort === 'plusLikes') {
+      applyFilters(search, categorieActive, villeFilter, quartierFilter, 'plusLikes')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [likes])
+
+  const toggleLike = async (produitId: string) => {
+    if (!user) return
+    if (userLikes[produitId]) {
+      const { error } = await supabase
+        .from('aime')
+        .delete()
+        .match({ produit_id: produitId, user_id: user.id })
+      if (error) {
+        console.error('Erreur suppression like:', error)
+        return
+      }
+      setLikes(prev => ({ ...prev, [produitId]: Math.max(0, (prev[produitId] || 1) - 1) }))
+      setUserLikes(prev => ({ ...prev, [produitId]: false }))
+    } else {
+      const { error } = await supabase
+        .from('aime')
+        .insert({ produit_id: produitId, user_id: user.id })
+      if (error) {
+        console.error('Erreur insertion like:', error)
+        return
+      }
+      setLikes(prev => ({ ...prev, [produitId]: (prev[produitId] || 0) + 1 }))
+      setUserLikes(prev => ({ ...prev, [produitId]: true }))
+    }
+  }
+
+  // Partage
+  const shareProduit = async (p: Produit) => {
+    const url = `${window.location.origin}/produit/${p.id}`
+    const text = `${p.nom} - ${p.prix} FCFA`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: p.nom, text: p.description || text, url })
+        return
+      } catch (e) {
+        // annulé, on tente fallback
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      alert('Lien copié ✅')
+    } catch {
+      alert('Partage non supporté. Lien: ' + url)
+    }
+  }
+
+  // Infinite scroll léger
+  useEffect(() => {
+    if (!loadingMoreRef.current) return
+    const el = loadingMoreRef.current
+    const obs = new IntersectionObserver((entries) => {
+      const first = entries[0]
+      if (first.isIntersecting) {
+        setVisibleCount((v) => Math.min(v + 12, filtered.length))
+      }
+    }, { rootMargin: '200px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [filtered.length])
+
+  const visibleItems = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white pb-24">
@@ -352,98 +465,167 @@ export default function AccueilPage() {
         ))}
       </div>
 
+      {/* Tri */}
+      <div className="px-4 mt-3">
+        <select
+          value={sort}
+          onChange={(e) => {
+            const value = e.target.value as typeof sort
+            setSort(value)
+            applyFilters(search, categorieActive, villeFilter, quartierFilter, value)
+          }}
+          className="w-full p-2 rounded-xl bg-zinc-800 text-white"
+        >
+          <option value="recent">Plus récents</option>
+          <option value="prixAsc">Prix croissant</option>
+          <option value="prixDesc">Prix décroissant</option>
+          <option value="plusLikes">Plus likés</option>
+        </select>
+      </div>
+
       {/* Produits */}
       <section className="mt-6 px-4">
         {loading ? (
-          <p className="text-center text-zinc-500">Chargement...</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-center text-zinc-400 mt-10">Aucun produit trouvé.</p>
-        ) : (
+          // ✨ Skeleton loader
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {filtered.map((produit) => (
-              <div key={produit.id} className="bg-zinc-900 rounded-xl p-2 text-sm">
-                {/* Vendeur */}
-                {produit.vendeur && (
-                  <div
-                    className="flex items-center gap-2 mb-2 cursor-pointer"
-                    onClick={() => router.push(`/profil/${produit.user_id}`)}
-                  >
-                    <img
-                      src={produit.vendeur.image || '/default-avatar.png'}
-                      alt="Vendeur"
-                      className="w-6 h-6 rounded-full object-cover"
-                    />
-                    <div className="text-xs font-semibold">
-                      {produit.vendeur.prenom}
-                      <div className="text-[10px] text-zinc-400">
-                        {produit.vendeur.ville}, {produit.vendeur.quartier}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Médias */}
-                <div className="overflow-x-auto flex gap-2 mb-2">
-                  {produit.images.length > 0 ? (
-                    produit.images.map((media, index) =>
-                      media.type === 'video' ? (
-                        <video
-                          key={index}
-                          src={media.url}
-                          className="w-44 h-32 object-cover rounded-lg cursor-pointer"
-                          onClick={() => router.push(`/produit/${produit.id}`)}
-                          muted
-                          loop
-                          autoPlay
-                        />
-                      ) : (
-                        <img
-                          key={index}
-                          src={media.url}
-                          alt="produit"
-                          className="w-44 h-32 object-cover rounded-lg cursor-pointer"
-                          onClick={() => router.push(`/produit/${produit.id}`)}
-                        />
-                      )
-                    )
-                  ) : (
-                    <div className="w-44 h-32 bg-zinc-800 flex items-center justify-center rounded-lg text-zinc-500 text-xs">
-                      Pas de média
-                    </div>
-                  )}
-                </div>
-
-                {/* Infos */}
-                <h2 className="font-semibold truncate">{produit.nom}</h2>
-                <p className="text-[13px] text-zinc-400">{produit.categorie}</p>
-                <p className="text-green-400 font-bold text-sm">{produit.prix} FCFA</p>
-
-                {/* Boutons Like + Commentaire */}
-                <div className="flex items-center justify-between mt-2">
-                  <button
-                    onClick={() => toggleLike(produit.id)}
-                    className="flex items-center gap-1"
-                    aria-label={userLikes[produit.id] ? 'Retirer like' : 'Ajouter like'}
-                  >
-                    <span className="text-xl">
-                      {userLikes[produit.id] ? '❤️' : '♡'}
-                    </span>
-                    <span>{likes[produit.id] || 0}</span>
-                  </button>
-                  <div className="flex items-center gap-1 text-zinc-400 text-sm">
-                    💬 <span>{commentsCount[produit.id] || 0}</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => router.push(`/messages/${produit.user_id}`)}
-                  className="mt-2 w-full text-xs bg-blue-700 text-white py-1 rounded-lg"
-                >
-                  Contacter le vendeur
-                </button>
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="bg-zinc-900 rounded-xl p-2 animate-pulse">
+                <div className="w-full h-32 bg-zinc-800 rounded-lg mb-2" />
+                <div className="h-4 bg-zinc-800 rounded w-3/4 mb-1" />
+                <div className="h-4 bg-zinc-800 rounded w-1/2" />
               </div>
             ))}
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-zinc-400 mt-10">Aucun produit trouvé.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {visibleItems.map((produit) => (
+                <div key={produit.id} className="bg-zinc-900 rounded-xl p-2 text-sm">
+                  {/* Vendeur */}
+                  {produit.vendeur && (
+                    <div
+                      className="flex items-center gap-2 mb-2 cursor-pointer"
+                      onClick={() => router.push(`/profil/${produit.user_id}`)}
+                    >
+                      <img
+                        src={produit.vendeur.image || '/default-avatar.png'}
+                        alt="Vendeur"
+                        className="w-6 h-6 rounded-full object-cover"
+                        loading="lazy"
+                      />
+                      <div className="text-xs font-semibold">
+                        {produit.vendeur.prenom}
+                        <div className="text-[10px] text-zinc-400">
+                          {produit.vendeur.ville}, {produit.vendeur.quartier}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Médias */}
+                  <div className="overflow-x-auto flex gap-2 mb-2">
+                    {produit.images.length > 0 ? (
+                      produit.images.map((media, index) =>
+                        media.type === 'video' ? (
+                          <video
+                            key={index}
+                            src={media.url}
+                            className="w-44 h-32 object-cover rounded-lg cursor-pointer"
+                            onClick={() => router.push(`/produit/${produit.id}`)}
+                            muted
+                            loop
+                            autoPlay
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img
+                            key={index}
+                            src={media.url}
+                            alt="produit"
+                            className="w-44 h-32 object-cover rounded-lg cursor-pointer"
+                            onClick={() => router.push(`/produit/${produit.id}`)}
+                            loading="lazy"
+                          />
+                        )
+                      )
+                    ) : (
+                      <div className="w-44 h-32 bg-zinc-800 flex items-center justify-center rounded-lg text-zinc-500 text-xs">
+                        Pas de média
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Infos */}
+                  <h2 className="font-semibold truncate">{produit.nom}</h2>
+                  <p className="text-[13px] text-zinc-400">{produit.categorie}</p>
+                  <p className="text-green-400 font-bold text-sm">{produit.prix} FCFA</p>
+
+                  {/* Boutons Like + Commentaire */}
+                  <div className="flex items-center justify-between mt-2">
+                    <button
+                      onClick={() => toggleLike(produit.id)}
+                      className="flex items-center gap-1"
+                      aria-label={userLikes[produit.id] ? 'Retirer like' : 'Ajouter like'}
+                    >
+                      <span className="text-xl">
+                        {userLikes[produit.id] ? '❤️' : '♡'}
+                      </span>
+                      <span>{likes[produit.id] || 0}</span>
+                    </button>
+                    <div className="flex items-center gap-1 text-zinc-400 text-sm">
+                      💬 <span>{commentsCount[produit.id] || 0}</span>
+                    </div>
+                  </div>
+
+                  {/* Partage + Voir + Contacter */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={() => shareProduit(produit)}
+                      className="text-xs bg-blue-700 text-white px-2 py-1 rounded-lg"
+                    >
+                      Partager
+                    </button>
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(`${produit.nom} - ${produit.prix} FCFA\n${window?.location?.origin || ''}/produit/${produit.id}`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs bg-emerald-700 px-2 py-1 rounded-lg"
+                    >
+                      WhatsApp
+                    </a>
+                    <button
+                      onClick={() => router.push(`/produit/${produit.id}`)}
+                      className="text-xs bg-zinc-700 px-2 py-1 rounded-lg ml-auto"
+                    >
+                      Voir
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => router.push(`/messages/${produit.user_id}`)}
+                    className="mt-2 w-full text-xs bg-blue-700 text-white py-1 rounded-lg"
+                  >
+                    Contacter le vendeur
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Charger plus */}
+            {visibleCount < filtered.length && (
+              <div className="mt-4 flex flex-col items-center">
+                <button
+                  onClick={() => setVisibleCount(v => Math.min(v + 12, filtered.length))}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm"
+                >
+                  Charger plus
+                </button>
+                <div ref={loadingMoreRef} className="h-4" />
+              </div>
+            )}
+          </>
         )}
       </section>
 

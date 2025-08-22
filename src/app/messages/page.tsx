@@ -167,7 +167,6 @@ export default function MessagesPage() {
     <main className="min-h-screen bg-zinc-950 text-white p-4 pb-24">
       <h1 className="text-2xl font-bold mb-6">💬 Mes Conversations</h1>
 
-      {/* Barre de recherche */}
       <input
         type="text"
         placeholder="Rechercher..."
@@ -253,7 +252,6 @@ export default function MessagesPage() {
                   </p>
                 </div>
 
-                {/* Bouton supprimer */}
                 <button
                   onClick={() => handleDeleteConversation(conv.conversation_id)}
                   className="mt-2 text-red-500 text-sm hover:underline self-end"
