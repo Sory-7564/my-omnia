@@ -9,6 +9,7 @@ type User = {
   prenom: string
   nom: string
   image?: string
+  last_seen?: string // statut en ligne / dernière connexion
 }
 
 type Message = {
@@ -40,12 +41,21 @@ export default function ConversationPage() {
   const [recordingTime, setRecordingTime] = useState(0)
   const [previewMedia, setPreviewMedia] = useState<File[]>([])
   const [viewMediaUrl, setViewMediaUrl] = useState<string | null>(null)
+  const [isOtherTyping, setIsOtherTyping] = useState(false) // typing indicator
 
   const endRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingIntervalRef = useRef<number | null>(null)
   const currentStreamRef = useRef<MediaStream | null>(null)
+
+  // Realtime (typing) & timers
+  const typingChannelRef = useRef<any>(null)
+  const typingHideTimerRef = useRef<number | null>(null)
+  const lastTypingSentRef = useRef<number>(0)
+
+  // Long press suppression
+  const longPressTimerRef = useRef<number | null>(null)
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }))
@@ -56,6 +66,17 @@ export default function ConversationPage() {
     const mm = Math.floor(s / 60).toString().padStart(2, '0')
     const ss = Math.floor(s % 60).toString().padStart(2, '0')
     return `${mm}:${ss}`
+  }
+
+  // Séparateurs de date
+  const formatDateSeparator = (iso: string) => {
+    const d = new Date(iso)
+    const now = new Date()
+    const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate())
+    const diffDays = Math.floor((start(now).getTime() - start(d).getTime()) / 86_400_000)
+    if (diffDays === 0) return "Aujourd'hui"
+    if (diffDays === 1) return 'Hier'
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
   const getConversationId = () =>
@@ -77,9 +98,12 @@ export default function ConversationPage() {
         image: (authUser.user_metadata as any)?.image || '/default-avatar.png'
       })
 
+      // Mettre à jour last_seen au chargement
+      await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', authUser.id)
+
       const { data: other } = await supabase
         .from('users')
-        .select('id, prenom, nom, image')
+        .select('id, prenom, nom, image, last_seen')
         .eq('id', otherUserId)
         .single()
       setOtherUser(other as User | null)
@@ -132,6 +156,81 @@ export default function ConversationPage() {
     init()
   }, [otherUserId, router])
 
+  // last_seen ping régulier
+  useEffect(() => {
+    let intervalId: number | null = null
+    let cancelled = false
+
+    const boot = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const uid = session?.user?.id
+      if (!uid) return
+      await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', uid)
+      intervalId = window.setInterval(async () => {
+        if (cancelled) return
+        await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', uid)
+      }, 30_000)
+    }
+
+    boot()
+    return () => {
+      cancelled = true
+      if (intervalId !== null) clearInterval(intervalId)
+    }
+  }, [])
+
+  // Écoute temps réel du last_seen de l'autre utilisateur
+  useEffect(() => {
+    if (!otherUserId) return
+    const channel = supabase
+      .channel('users-realtime')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'users',
+        filter: `id=eq.${otherUserId}`
+      }, (payload) => {
+        const u = payload.new as User
+        setOtherUser(prev => prev ? { ...prev, ...u } : u)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [otherUserId])
+
+  // Typing channel (Supabase broadcast)
+  useEffect(() => {
+    if (!user) return
+    const convId = getConversationId()
+    if (!convId) return
+
+    const ch = supabase
+      .channel(`typing:${convId}`, { config: { broadcast: { ack: false } } })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        // Si c'est l'autre utilisateur qui tape
+        if (payload?.user_id === otherUserId) {
+          setIsOtherTyping(true)
+          if (typingHideTimerRef.current) clearTimeout(typingHideTimerRef.current)
+          typingHideTimerRef.current = window.setTimeout(() => setIsOtherTyping(false), 2000)
+        }
+      })
+      .subscribe()
+
+    typingChannelRef.current = ch
+
+    return () => {
+      if (typingHideTimerRef.current) {
+        clearTimeout(typingHideTimerRef.current)
+        typingHideTimerRef.current = null
+      }
+      supabase.removeChannel(ch)
+      typingChannelRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, otherUserId])
+
   // -------------------- ENVOI TEXTE & MEDIAS --------------------
   const sendMessage = async () => {
     if (!user) return
@@ -157,7 +256,6 @@ export default function ConversationPage() {
       if (inserted) {
         setMessages(prev => [...prev, inserted as Message])
         scrollToBottom()
-        // 🚀 Ajouter notification
         await supabase.from('notifications').insert({
           user_id: otherUserId,
           sender_id: user.id,
@@ -168,6 +266,7 @@ export default function ConversationPage() {
         })
       }
       setNewMessage('')
+      await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     }
 
     // Médias
@@ -198,7 +297,6 @@ export default function ConversationPage() {
       if (insertedMedia) {
         setMessages(prev => [...prev, insertedMedia as Message])
         scrollToBottom()
-        // 🚀 Ajouter notification
         await supabase.from('notifications').insert({
           user_id: otherUserId,
           sender_id: user.id,
@@ -208,6 +306,7 @@ export default function ConversationPage() {
           created_at: new Date().toISOString()
         })
       }
+      await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     }
   }
 
@@ -252,7 +351,6 @@ export default function ConversationPage() {
         if (insertedAudio) {
           setMessages(prev => [...prev, insertedAudio as Message])
           scrollToBottom()
-          // 🚀 Ajouter notification
           await supabase.from('notifications').insert({
             user_id: otherUserId,
             sender_id: user.id,
@@ -268,6 +366,8 @@ export default function ConversationPage() {
           clearInterval(recordingIntervalRef.current)
           recordingIntervalRef.current = null
         }
+
+        await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
       }
 
       mediaRecorder.start()
@@ -301,8 +401,54 @@ export default function ConversationPage() {
     setPreviewMedia(prev => prev.filter((_, i) => i !== index))
   }
 
+  // -------------------- SUPPRESSION SÉCURISÉE --------------------
   const handleDeleteMessage = async (msgId: string) => {
     await supabase.from('messages').update({ supprimer: true }).eq('id', msgId)
+  }
+
+  const confirmDelete = async (msg: Message) => {
+    const ok = window.confirm('Supprimer ce message ?')
+    if (!ok) return
+    await handleDeleteMessage(msg.id)
+  }
+
+  const startLongPress = (msg: Message) => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = window.setTimeout(() => {
+      confirmDelete(msg)
+      longPressTimerRef.current = null
+    }, 600) // appui long ~600ms
+  }
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  // -------------------- STATUT EN LIGNE --------------------
+  const getUserStatus = () => {
+    if (!otherUser?.last_seen) return ''
+    const last = new Date(otherUser.last_seen)
+    const now = new Date()
+    const diffSec = (now.getTime() - last.getTime()) / 1000
+    if (diffSec < 60) return 'En ligne'
+    return `Vu ${last.toLocaleString('fr-FR')}`
+  }
+
+  // -------------------- INPUT HANDLERS --------------------
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(e.target.value)
+    const now = Date.now()
+    if (now - lastTypingSentRef.current > 1000) {
+      typingChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { user_id: user?.id }
+      })
+      lastTypingSentRef.current = now
+    }
   }
 
   if (loading) return <p className="text-white text-center mt-10">Chargement...</p>
@@ -310,66 +456,105 @@ export default function ConversationPage() {
   // -------------------- RENDER --------------------
   return (
     <main className="min-h-screen bg-zinc-950 text-white p-4 pb-24 flex flex-col">
-      {/* Entête */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-2">
+        <button
+          onClick={() => router.push('/messages')}
+          className="mr-1 px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800"
+        >
+          ←
+        </button>
         <img
           src={otherUser?.image || '/default-avatar.png'}
           alt="avatar"
           className="w-10 h-10 rounded-full object-cover"
         />
-        <h1 className="text-lg font-bold">
-          {otherUser?.prenom} {otherUser?.nom}
-        </h1>
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold truncate">
+            {otherUser?.prenom} {otherUser?.nom}
+          </h1>
+          <p className="text-xs text-zinc-400 truncate">{getUserStatus()}</p>
+        </div>
       </div>
+
+      {/* Typing indicator */}
+      {isOtherTyping && (
+        <div className="text-xs text-blue-300 mb-2 ml-12">… est en train d’écrire</div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-2">
-        {messages.map(msg => {
+        {messages.map((msg, index) => {
           const isSender = msg.sender_id === user?.id
           const senderName = isSender ? 'Moi' : otherUser?.prenom || 'Contact'
+
+          // Séparateur de date
+          const prev = messages[index - 1]
+          const showDateSep =
+            !prev || new Date(prev.created_at).toDateString() !== new Date(msg.created_at).toDateString()
+
           return (
-            <div
-              key={msg.id}
-              onClick={() => handleDeleteMessage(msg.id)}
-              className={`flex flex-col max-w-[80%] px-4 py-2 rounded-lg cursor-pointer ${
-                isSender ? 'bg-blue-600 self-end ml-auto' : 'bg-zinc-800 self-start mr-auto'
-              }`}
-            >
-              <div className="text-xs font-semibold mb-1">{senderName}</div>
-              {msg.supprimer ? (
-                <p className="italic text-sm text-gray-300">Message supprimé</p>
-              ) : (
-                <>
-                  {msg.contenu && <p className="whitespace-pre-wrap">{msg.contenu}</p>}
-                  {msg.audio_url && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <audio src={msg.audio_url} controls />
-                      {typeof msg.audio_duration === 'number' && (
-                        <span className="text-xs text-gray-200">{formatDuration(msg.audio_duration)}</span>
-                      )}
-                    </div>
-                  )}
-                  {msg.media_url && (
-                    msg.media_type === 'image' ? (
-                      <img
-                        src={msg.media_url}
-                        onClick={() => setViewMediaUrl(msg.media_url!)}
-                        className="mt-1 rounded-lg max-w-[220px] cursor-zoom-in"
-                        alt="media"
-                      />
-                    ) : (
-                      <video
-                        src={msg.media_url}
-                        controls
-                        className="mt-1 rounded-lg max-w-[260px]"
-                      />
-                    )
-                  )}
-                </>
+            <div key={msg.id}>
+              {showDateSep && (
+                <div className="text-center text-xs text-zinc-400 my-2">
+                  {formatDateSeparator(msg.created_at)}
+                </div>
               )}
-              <div className="text-[10px] text-right mt-1 text-gray-200">
-                {new Date(msg.created_at).toLocaleString('fr-FR')}
-                {isSender && msg.vu && <span className="ml-1">✅</span>}
+
+              <div
+                // suppression sécurisée: appui long OU double-clic
+                onMouseDown={() => startLongPress(msg)}
+                onMouseUp={cancelLongPress}
+                onMouseLeave={cancelLongPress}
+                onTouchStart={() => startLongPress(msg)}
+                onTouchEnd={cancelLongPress}
+                onDoubleClick={() => confirmDelete(msg)}
+                className={`flex flex-col max-w-[80%] px-4 py-2 rounded-2xl cursor-default shadow
+                  ${isSender
+                    ? 'bg-blue-600 self-end ml-auto text-white rounded-br-md'
+                    : 'bg-zinc-800 self-start mr-auto text-white rounded-bl-md'
+                  }`}
+              >
+                <div className="text-[11px] font-semibold mb-1 opacity-90">{senderName}</div>
+
+                {msg.supprimer ? (
+                  <p className="italic text-sm text-gray-300">Message supprimé</p>
+                ) : (
+                  <>
+                    {msg.contenu && <p className="whitespace-pre-wrap">{msg.contenu}</p>}
+
+                    {msg.audio_url && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <audio src={msg.audio_url} controls />
+                        {typeof msg.audio_duration === 'number' && (
+                          <span className="text-xs text-gray-200">{formatDuration(msg.audio_duration)}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {msg.media_url && (
+                      msg.media_type === 'image' ? (
+                        <img
+                          src={msg.media_url}
+                          onClick={() => setViewMediaUrl(msg.media_url!)}
+                          className="mt-1 rounded-lg max-w-[220px] cursor-zoom-in"
+                          alt="media"
+                        />
+                      ) : (
+                        <video
+                          src={msg.media_url}
+                          controls
+                          className="mt-1 rounded-lg max-w-[260px]"
+                        />
+                      )
+                    )}
+                  </>
+                )}
+
+                <div className="text-[10px] text-right mt-1 text-gray-200">
+                  {new Date(msg.created_at).toLocaleString('fr-FR')}
+                  {isSender && msg.vu && <span className="ml-1">✅</span>}
+                </div>
               </div>
             </div>
           )
@@ -406,10 +591,22 @@ export default function ConversationPage() {
         <input
           type="text"
           value={newMessage}
-          onChange={e => setNewMessage(e.target.value)}
+          onChange={handleInputChange}
           placeholder="Écrire un message..."
           className="flex-1 p-3 rounded-xl bg-zinc-800 text-white outline-none"
           onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          onFocus={() => {
+            // ping typing immédiat à la prise de focus
+            const now = Date.now()
+            if (now - lastTypingSentRef.current > 1000) {
+              typingChannelRef.current?.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { user_id: user?.id }
+              })
+              lastTypingSentRef.current = now
+            }
+          }}
         />
         <button onClick={sendMessage} className="bg-blue-600 text-white px-4 py-2 rounded-xl">
           Envoyer

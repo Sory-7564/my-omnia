@@ -7,6 +7,36 @@ import Modal from 'react-modal'
 
 Modal.setAppElement('body')
 
+// --- Fonctions notifications ---
+// Like
+async function addLikeNotification(produitId: string, senderId: string, receiverId: string) {
+  if (senderId === receiverId) return // éviter l'auto-notif
+
+  await supabase.from("notifications").insert({
+    type: "like",
+    produit_id: produitId,
+    sender_id: senderId,
+    receiver_id: receiverId,
+    is_read: false,
+    message: "a aimé votre produit 💙"
+  })
+}
+
+// Commentaire
+async function addCommentNotification(produitId: string, senderId: string, receiverId: string) {
+  if (senderId === receiverId) return
+
+  await supabase.from("notifications").insert({
+    type: "comment",
+    produit_id: produitId,
+    sender_id: senderId,
+    receiver_id: receiverId,
+    is_read: false,
+    message: "a commenté votre produit 💬"
+  })
+}
+// -------------------------------
+
 export default function ProduitPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -90,7 +120,7 @@ export default function ProduitPage() {
           .maybeSingle()
         setLiked(!!userLike)
 
-        // ratings (inchangés)
+        // ratings
         const { data: userRating } = await supabase
           .from('ratings')
           .select('rating')
@@ -109,7 +139,7 @@ export default function ProduitPage() {
           setTotalRatings(allRatings.length)
         }
 
-        // commentaires (inchangés)
+        // commentaires
         const { data: commentsData } = await supabase
           .from('commentaires')
           .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
@@ -132,7 +162,6 @@ export default function ProduitPage() {
               const rec = payload.record
               const ev = payload.eventType
               if (!rec) return
-              // seule action si concerne ce produit
               if (rec.produit_id !== id) return
 
               if (ev === 'INSERT') {
@@ -163,9 +192,7 @@ export default function ProduitPage() {
           // @ts-ignore
           if (channel.unsubscribe) channel.unsubscribe()
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
     }
   }, [id, router])
 
@@ -173,21 +200,19 @@ export default function ProduitPage() {
     if (!user || !produit) return
     if (liked) {
       const { error } = await supabase.from('aime').delete().eq('produit_id', produit.id).eq('user_id', user.id)
-      if (error) {
-        console.error('Erreur suppression like:', error)
-        return
-      }
-      // optimistic update — realtime subscription will also sync
+      if (error) return console.error('Erreur suppression like:', error)
+
       setLiked(false)
       setLikesTotal(prev => Math.max(0, prev - 1))
     } else {
       const { error } = await supabase.from('aime').insert({ produit_id: produit.id, user_id: user.id })
-      if (error) {
-        console.error('Erreur insertion like:', error)
-        return
-      }
+      if (error) return console.error('Erreur insertion like:', error)
+
       setLiked(true)
       setLikesTotal(prev => prev + 1)
+
+      // 🚀 Notification like
+      addLikeNotification(produit.id, user.id, produit.user_id)
     }
   }
 
@@ -204,16 +229,22 @@ export default function ProduitPage() {
   }
 
   const sendComment = async () => {
-    if (!newComment.trim()) return
-    await supabase.from('commentaires').insert({
+    if (!newComment.trim() || !user || !produit) return
+
+    const { data: insertedComment } = await supabase.from('commentaires').insert({
       produit_id: produit.id,
       user_id: user.id,
       contenu: newComment,
       parent_id: replyTo,
-    })
+    }).select().single()
+
     setNewComment('')
     setReplyTo(null)
-    // recharger commentaires (location.reload was utilisé avant) — on recharge proprement
+
+    // 🚀 Notification commentaire
+    addCommentNotification(produit.id, user.id, produit.user_id)
+
+    // recharger commentaires
     const { data: commentsData } = await supabase
       .from('commentaires')
       .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
@@ -272,7 +303,6 @@ export default function ProduitPage() {
               {c.user_id === user?.id && (
                 <button onClick={async () => {
                   await supabase.from('commentaires').delete().eq('id', c.id)
-                  // reload comments
                   const { data: commentsData } = await supabase
                     .from('commentaires')
                     .select('id, contenu, created_at, user_id, parent_id, users (prenom, image)')
@@ -299,6 +329,7 @@ export default function ProduitPage() {
 
   return (
     <main className="text-white p-4 pb-32">
+      {/* Rendu vendeur et media */}
       <div onClick={() => router.push(`/profil/${produit.user_id}`)} className="flex gap-3 mb-4 items-center cursor-pointer">
         <img src={vendeur?.image || '/default-avatar.png'} className="w-10 h-10 rounded-full" />
         <div>

@@ -3,25 +3,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { addLikeNotification } from '@/lib/notifications' // notifications pour likes
 
 type Produit = {
-  id: string;
-  nom: string;
-  description: string;
-  prix: number;
-  categorie: string;
-  created_at: string;
-  user_id: string;
+  id: string
+  nom: string
+  description: string
+  prix: number
+  categorie: string
+  created_at: string
+  user_id: string
   vendeur: {
-    prenom: string;
-    ville: string;
-    quartier: string;
-    image: string;
-  };
+    prenom: string
+    ville: string
+    quartier: string
+    image: string
+  }
   images: {
-    url: string;
-    type: string;
-  }[];
+    url: string
+    type: string
+  }[]
 }
 
 type LikesMap = { [key: string]: number }
@@ -42,9 +43,8 @@ export default function AccueilPage() {
   const [categorieActive, setCategorieActive] = useState('Tout')
   const [villeFilter, setVilleFilter] = useState('')
   const [quartierFilter, setQuartierFilter] = useState('')
-  const [notifCount, setNotifCount] = useState(0) // non lues
+  const [notifCount, setNotifCount] = useState(0)
 
-  // ✨ Ajouts
   const [sort, setSort] = useState<'recent' | 'prixAsc' | 'prixDesc' | 'plusLikes'>('recent')
   const [visibleCount, setVisibleCount] = useState(12)
   const loadingMoreRef = useRef<HTMLDivElement | null>(null)
@@ -72,20 +72,19 @@ export default function AccueilPage() {
         setUser(session.user)
 
         // user info
-        const { data: userInfo, error: userErr } = await supabase
+        const { data: userInfo } = await supabase
           .from('users')
           .select('prenom, nom')
           .eq('id', session.user.id)
           .single()
 
-        if (userErr) console.error('[users] error:', userErr)
         if (userInfo) {
           setPrenom(userInfo.prenom)
           setNom(userInfo.nom)
         }
 
         // produits + enrichissement medias & vendeur
-        const { data: produitsData, error: produitsErr } = await supabase
+        const { data: produitsData } = await supabase
           .from('produits')
           .select(`
             id, nom, description, prix, categorie, created_at, user_id,
@@ -93,8 +92,6 @@ export default function AccueilPage() {
             images_produits (url, type)
           `)
           .order('created_at', { ascending: false })
-
-        if (produitsErr) console.error('[produits] error:', produitsErr)
 
         const enrichis: Produit[] = (produitsData || []).map((p: any) => ({
           ...p,
@@ -112,11 +109,9 @@ export default function AccueilPage() {
         setFiltered(enrichis)
 
         // Charger likes depuis la table `aime`
-        const { data: aimeData, error: aimeErr } = await supabase
+        const { data: aimeData } = await supabase
           .from('aime')
           .select('produit_id, user_id')
-
-        if (aimeErr) console.error('[aime] error:', aimeErr)
 
         const likesCount: LikesMap = {}
         const userLikeStatus: UserLikesMap = {}
@@ -128,11 +123,9 @@ export default function AccueilPage() {
         setUserLikes(userLikeStatus)
 
         // Charger nombre de commentaires (tous)
-        const { data: commentsData, error: commentsErr } = await supabase
+        const { data: commentsData } = await supabase
           .from('commentaires')
           .select('id, produit_id')
-
-        if (commentsErr) console.error('[commentaires] error:', commentsErr)
 
         const commentsCountMap: CommentsMap = {}
         commentsData?.forEach((c: any) => {
@@ -140,51 +133,15 @@ export default function AccueilPage() {
         })
         setCommentsCount(commentsCountMap)
 
-        // ⚡ Notifications — stratégie robuste (is_read OU lu) avec fallback
-        let unreadCount = 0
-        try {
-          const { data, error } = await supabase
-            .from('notifications')
-            .select('id')
-            .eq('user_id', session.user.id)
-            .eq('is_read', false)
-          if (error) throw error
-          unreadCount = data?.length || 0
-          console.log('[notifications] using is_read, count =', unreadCount)
-        } catch (e1) {
-          console.warn('[notifications] is_read query failed, trying lu:', e1)
-          try {
-            const { data, error } = await supabase
-              .from('notifications')
-              .select('id')
-              .eq('user_id', session.user.id)
-              .eq('lu', false)
-            if (error) throw error
-            unreadCount = data?.length || 0
-            console.log('[notifications] using lu, count =', unreadCount)
-          } catch (e2) {
-            console.warn('[notifications] both filtered queries failed, fallback select *:', e2)
-            const { data, error } = await supabase
-              .from('notifications')
-              .select('*')
-              .eq('user_id', session.user.id)
-            if (error) {
-              console.error('Erreur chargement notifications (fallback):', error)
-            } else {
-              unreadCount = (data || []).filter((n: any) => {
-                const hasIsRead = Object.prototype.hasOwnProperty.call(n, 'is_read')
-                const hasLu = Object.prototype.hasOwnProperty.call(n, 'lu')
-                if (hasIsRead) return n.is_read === false
-                if (hasLu) return n.lu === false
-                return false
-              }).length
-              console.log('[notifications] fallback count =', unreadCount)
-            }
-          }
-        }
-        setNotifCount(unreadCount)
+        // Notifications non lues
+        const { data: notifData } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .eq('is_read', false)
+        setNotifCount(notifData?.length || 0)
 
-        // *** Abonnement realtime sur la table `aime` *** (compat new/old vs record)
+        // Realtime likes
         channelAime = supabase
           .channel('realtime-aime')
           .on(
@@ -205,38 +162,28 @@ export default function AccueilPage() {
               })
 
               setUserLikes(prev => {
-                if (rec.user_id === session?.user?.id && ev === 'INSERT') {
-                  return { ...prev, [rec.produit_id]: true }
-                }
-                if (rec.user_id === session?.user?.id && ev === 'DELETE') {
-                  return { ...prev, [rec.produit_id]: false }
-                }
+                if (rec.user_id === session?.user?.id && ev === 'INSERT') return { ...prev, [rec.produit_id]: true }
+                if (rec.user_id === session?.user?.id && ev === 'DELETE') return { ...prev, [rec.produit_id]: false }
                 return prev
               })
             }
           )
           .subscribe()
 
-        // *** Abonnement realtime sur la table `notifications` *** (is_read OU lu)
+        // Realtime notifications
         channelNotif = supabase
           .channel('realtime-notifs')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'notifications' },
             (payload: any) => {
-              console.log('[notifications] realtime payload:', payload)
               const n = payload.new ?? payload.record
               if (!n || n.user_id !== session?.user?.id) return
 
-              if (payload.eventType === 'INSERT') {
-                setNotifCount(prev => prev + 1)
-              }
-
+              if (payload.eventType === 'INSERT') setNotifCount(prev => prev + 1)
               if (payload.eventType === 'UPDATE') {
                 const readValue = (n.lu ?? n.is_read)
-                if (readValue === true) {
-                  setNotifCount(prev => Math.max(0, prev - 1))
-                }
+                if (readValue === true) setNotifCount(prev => Math.max(0, prev - 1))
               }
             }
           )
@@ -253,29 +200,16 @@ export default function AccueilPage() {
 
     return () => {
       try {
-        if (channelAime) {
-          if ((supabase as any).removeChannel) (supabase as any).removeChannel(channelAime)
-          if (channelAime.unsubscribe) channelAime.unsubscribe()
-        }
-        if (channelNotif) {
-          if ((supabase as any).removeChannel) (supabase as any).removeChannel(channelNotif)
-          if (channelNotif.unsubscribe) channelNotif.unsubscribe()
-        }
-      } catch {
-        // ignore
-      }
+        if (channelAime?.unsubscribe) channelAime.unsubscribe()
+        if (channelNotif?.unsubscribe) channelNotif.unsubscribe()
+      } catch {}
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Tri et filtres (reprend ta logique et ajoute le tri)
+  // Tri et filtres
   const applyFilters = (searchText: string, cat: string, ville = '', quartier = '', tri = sort) => {
     let filtres = [...produits]
-
-    if (cat !== 'Tout') {
-      filtres = filtres.filter(p => p.categorie === cat)
-    }
-
+    if (cat !== 'Tout') filtres = filtres.filter(p => p.categorie === cat)
     if (searchText.trim()) {
       const q = searchText.trim().toLowerCase()
       filtres = filtres.filter(p =>
@@ -284,95 +218,52 @@ export default function AccueilPage() {
         p.description?.toLowerCase().includes(q)
       )
     }
+    if (ville.trim()) filtres = filtres.filter(p => p.vendeur?.ville?.toLowerCase().includes(ville.toLowerCase()))
+    if (quartier.trim()) filtres = filtres.filter(p => p.vendeur?.quartier?.toLowerCase().includes(quartier.toLowerCase()))
 
-    if (ville.trim()) {
-      filtres = filtres.filter(p =>
-        p.vendeur?.ville?.toLowerCase().includes(ville.toLowerCase())
-      )
-    }
-
-    if (quartier.trim()) {
-      filtres = filtres.filter(p =>
-        p.vendeur?.quartier?.toLowerCase().includes(quartier.toLowerCase())
-      )
-    }
-
-    // Tri
     if (tri === 'prixAsc') filtres.sort((a, b) => (a.prix || 0) - (b.prix || 0))
     if (tri === 'prixDesc') filtres.sort((a, b) => (b.prix || 0) - (a.prix || 0))
     if (tri === 'recent') filtres.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    if (tri === 'plusLikes') {
-      filtres.sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0))
-    }
+    if (tri === 'plusLikes') filtres.sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0))
 
     setFiltered(filtres)
     setVisibleCount(12)
   }
 
-  // Re-appliquer le tri "plus likés" si les likes changent
   useEffect(() => {
-    if (sort === 'plusLikes') {
-      applyFilters(search, categorieActive, villeFilter, quartierFilter, 'plusLikes')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (sort === 'plusLikes') applyFilters(search, categorieActive, villeFilter, quartierFilter, 'plusLikes')
   }, [likes])
 
+  // Gestion like + notification
   const toggleLike = async (produitId: string) => {
     if (!user) return
     if (userLikes[produitId]) {
-      const { error } = await supabase
-        .from('aime')
-        .delete()
-        .match({ produit_id: produitId, user_id: user.id })
-      if (error) {
-        console.error('Erreur suppression like:', error)
-        return
-      }
+      await supabase.from('aime').delete().match({ produit_id: produitId, user_id: user.id })
       setLikes(prev => ({ ...prev, [produitId]: Math.max(0, (prev[produitId] || 1) - 1) }))
       setUserLikes(prev => ({ ...prev, [produitId]: false }))
     } else {
-      const { error } = await supabase
-        .from('aime')
-        .insert({ produit_id: produitId, user_id: user.id })
-      if (error) {
-        console.error('Erreur insertion like:', error)
-        return
-      }
+      await supabase.from('aime').insert({ produit_id: produitId, user_id: user.id })
       setLikes(prev => ({ ...prev, [produitId]: (prev[produitId] || 0) + 1 }))
       setUserLikes(prev => ({ ...prev, [produitId]: true }))
+      await addLikeNotification(user.id, produitId)
     }
   }
 
-  // Partage
   const shareProduit = async (p: Produit) => {
     const url = `${window.location.origin}/produit/${p.id}`
-    const text = `${p.nom} - ${p.prix} FCFA`
-
     if (navigator.share) {
-      try {
-        await navigator.share({ title: p.nom, text: p.description || text, url })
-        return
-      } catch (e) {
-        // annulé, on tente fallback
-      }
+      try { await navigator.share({ title: p.nom, text: p.description || '', url }); return } catch {}
     }
-    try {
-      await navigator.clipboard.writeText(url)
-      alert('Lien copié ✅')
-    } catch {
-      alert('Partage non supporté. Lien: ' + url)
-    }
+    try { await navigator.clipboard.writeText(url); alert('Lien copié ✅') } catch { alert('Partage non supporté. Lien: ' + url) }
   }
 
-  // Infinite scroll léger
+  // Infinite scroll
   useEffect(() => {
     if (!loadingMoreRef.current) return
     const el = loadingMoreRef.current
-    const obs = new IntersectionObserver((entries) => {
+    const obs = new IntersectionObserver(entries => {
       const first = entries[0]
-      if (first.isIntersecting) {
-        setVisibleCount((v) => Math.min(v + 12, filtered.length))
-      }
+      if (first.isIntersecting) setVisibleCount(v => Math.min(v + 12, filtered.length))
     }, { rootMargin: '200px' })
     obs.observe(el)
     return () => obs.disconnect()
@@ -388,27 +279,13 @@ export default function AccueilPage() {
         {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
 
         {/* Cloche notifications */}
-        <button
-          onClick={() => router.push('/notifications')}
-          className="absolute right-4 top-4 text-white relative"
-          aria-label="Notifications"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
+        <button onClick={() => router.push('/notifications')} className="absolute right-4 top-4 text-white relative">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
-          {notifCount > 0 && (
-            <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-600" />
-          )}
+          {notifCount > 0 && <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-600" />}
         </button>
       </header>
-
       {/* Recherche */}
       <div className="px-4 mt-4">
         <input
