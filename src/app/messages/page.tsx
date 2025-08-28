@@ -235,7 +235,11 @@ export default function MessagesPage() {
                       {otherUser ? `${otherUser.prenom} ${otherUser.nom}` : 'Utilisateur'}
                     </p>
                     <p className="text-sm text-zinc-400 truncate">
-                      {conv.last_message || 'Aucun message'}
+                      {conv.last_message
+                        ? (conv.last_message.length > 60
+                          ? conv.last_message.slice(0, 60) + '...'
+                          : conv.last_message)
+                        : 'Aucun message'}
                     </p>
                   </div>
 

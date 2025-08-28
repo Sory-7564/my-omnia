@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { addLikeNotification } from '@/lib/notifications' // notifications pour likes
+import { addLikeNotification } from '@/lib/notifications'
 
 type Produit = {
   id: string
@@ -137,7 +137,7 @@ export default function AccueilPage() {
         const { data: notifData } = await supabase
           .from('notifications')
           .select('id')
-          .eq('user_id', session.user.id)
+          .eq('receiver_id', session.user.id)
           .eq('is_read', false)
         setNotifCount(notifData?.length || 0)
 
@@ -178,11 +178,11 @@ export default function AccueilPage() {
             { event: '*', schema: 'public', table: 'notifications' },
             (payload: any) => {
               const n = payload.new ?? payload.record
-              if (!n || n.user_id !== session?.user?.id) return
+              if (!n || n.receiver_id !== session?.user?.id) return
 
               if (payload.eventType === 'INSERT') setNotifCount(prev => prev + 1)
               if (payload.eventType === 'UPDATE') {
-                const readValue = (n.lu ?? n.is_read)
+                const readValue = (n.is_read ?? n.lu)
                 if (readValue === true) setNotifCount(prev => Math.max(0, prev - 1))
               }
             }
@@ -206,7 +206,6 @@ export default function AccueilPage() {
     }
   }, [])
 
-  // Tri et filtres
   const applyFilters = (searchText: string, cat: string, ville = '', quartier = '', tri = sort) => {
     let filtres = [...produits]
     if (cat !== 'Tout') filtres = filtres.filter(p => p.categorie === cat)
@@ -234,7 +233,6 @@ export default function AccueilPage() {
     if (sort === 'plusLikes') applyFilters(search, categorieActive, villeFilter, quartierFilter, 'plusLikes')
   }, [likes])
 
-  // Gestion like + notification
   const toggleLike = async (produitId: string) => {
     if (!user) return
     if (userLikes[produitId]) {
@@ -257,7 +255,6 @@ export default function AccueilPage() {
     try { await navigator.clipboard.writeText(url); alert('Lien copié ✅') } catch { alert('Partage non supporté. Lien: ' + url) }
   }
 
-  // Infinite scroll
   useEffect(() => {
     if (!loadingMoreRef.current) return
     const el = loadingMoreRef.current
@@ -279,13 +276,28 @@ export default function AccueilPage() {
         {(prenom && nom) && <p className="text-sm">Bonjour, {prenom} {nom}</p>}
 
         {/* Cloche notifications */}
-        <button onClick={() => router.push('/notifications')} className="absolute right-4 top-4 text-white relative">
+        <button
+          onClick={async () => {
+            router.push('/notifications')
+            if (user?.id) {
+              await supabase
+                .from('notifications')
+                .update({ is_read: true })
+                .eq('receiver_id', user.id)
+                .eq('is_read', false)
+            }
+            setNotifCount(0)
+          }}
+          className="absolute right-4 top-4 text-white relative"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
           {notifCount > 0 && <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-600" />}
         </button>
       </header>
+
+
       {/* Recherche */}
       <div className="px-4 mt-4">
         <input

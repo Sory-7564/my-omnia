@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 type Notification = {
   id: string
@@ -17,6 +17,7 @@ type Notification = {
     prenom?: string
     nom?: string
     email: string
+    image?: string
   } | null
 }
 
@@ -24,6 +25,7 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     let channel: any = null
@@ -54,19 +56,34 @@ export default function NotificationsPage() {
       }
 
       if (notifData && notifData.length > 0) {
-        // Récupérer les sender_id uniques
         const senderIds = [...new Set(notifData.map((n) => n.sender_id))]
 
-        // Charger les infos des utilisateurs
         const { data: usersData } = await supabase
           .from("users")
-          .select("id, prenom, nom, email")
+          .select("id, prenom, nom, email, image")
           .in("id", senderIds)
 
-        // Fusionner notifications + users
-        const merged = notifData.map((n) => ({
+        // Récupérer les commentaires pour notifications de type "comment"
+        const commentNotifs = notifData.filter(n => n.type === "comment")
+        let commentsMap: Record<string, string> = {}
+
+        if (commentNotifs.length > 0) {
+          const { data: commentsData } = await supabase
+            .from("commentaires")
+            .select("id, contenu, user_id, produit_id")
+            .in("produit_id", commentNotifs.map(n => n.produit_id))
+
+          if (commentsData) {
+            commentsData.forEach(c => {
+              commentsMap[`${c.produit_id}_${c.user_id}`] = c.contenu
+            })
+          }
+        }
+
+        const merged = notifData.map(n => ({
           ...n,
-          sender: usersData?.find((u) => u.id === n.sender_id) || null,
+          sender: usersData?.find(u => u.id === n.sender_id) || null,
+          message: n.type === "comment" ? commentsMap[`${n.produit_id}_${n.sender_id}`] : n.message
         }))
 
         setNotifications(merged as Notification[])
@@ -74,7 +91,7 @@ export default function NotificationsPage() {
         setNotifications([])
       }
 
-      // 🔔 Realtime notifications
+      // 🔔 Realtime
       channel = supabase
         .channel('notifications-' + user.id)
         .on(
@@ -84,15 +101,26 @@ export default function NotificationsPage() {
             const rec = payload.record
             if (!rec) return
 
-            // Charger le sender correspondant
             const { data: senderData } = await supabase
               .from("users")
-              .select("id, prenom, nom, email")
+              .select("id, prenom, nom, email, image")
               .eq("id", rec.sender_id)
               .single()
 
+            // Récupérer le commentaire si c'est une notif de type comment
+            let commentText = rec.message
+            if (rec.type === "comment") {
+              const { data: commentData } = await supabase
+                .from("commentaires")
+                .select("contenu")
+                .eq("produit_id", rec.produit_id)
+                .eq("user_id", rec.sender_id)
+                .single()
+              commentText = commentData?.contenu || rec.message
+            }
+
             setNotifications((prev) => [
-              { ...rec, sender: senderData || null },
+              { ...rec, sender: senderData || null, message: commentText },
               ...prev,
             ])
           }
@@ -114,49 +142,73 @@ export default function NotificationsPage() {
     }
   }, [])
 
-  if (loading) return <p className="p-4">⏳ Chargement...</p>
+  if (loading) return <p className="text-center text-white mt-10">Chargement...</p>
   if (error) return <p className="p-4 text-red-500">⚠️ {error}</p>
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">🔔 Notifications</h1>
+    <main className="min-h-screen bg-zinc-950 text-white p-4 pb-24">
+      <h1 className="text-2xl font-bold mb-6">🔔 Mes Notifications</h1>
 
       {notifications.length === 0 ? (
-        <p className="text-gray-500">Aucune notification pour le moment.</p>
+        <p className="text-center text-zinc-400 mt-10">Aucune notification pour le moment.</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {notifications.map((notif) => (
             <li
               key={notif.id}
-              className={`p-3 rounded-xl shadow ${
-                notif.is_read ? "bg-gray-100" : "bg-blue-100"
-              }`}
+              className="p-4 bg-zinc-800 rounded-lg hover:bg-zinc-700 flex flex-col gap-2"
             >
-              <p>
-                <strong>
-                  {notif.sender?.prenom && notif.sender?.nom
-                    ? `${notif.sender.prenom} ${notif.sender.nom}`
-                    : notif.sender?.email || "Utilisateur inconnu"}
-                </strong>{" "}
-                {notif.type === "like"
-                  ? "a aimé votre produit 💙"
-                  : "a commenté votre produit 💬"}
-              </p>
+              <div className="flex items-center gap-3">
+                <img
+                  src={notif.sender?.image || '/default-avatar.png'}
+                  alt={`${notif.sender?.prenom || ''} ${notif.sender?.nom || ''}`}
+                  className="w-10 h-10 rounded-full object-cover cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    router.push(`/profil/${notif.sender?.id}`)
+                  }}
+                />
 
-              <Link
-                href={`/produit/${notif.produit_id}`}
-                className="text-sm text-blue-600 underline"
+                <div className="flex-1">
+                  <p
+                    className="font-semibold cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      router.push(`/profil/${notif.sender?.id}`)
+                    }}
+                  >
+                    {notif.sender?.prenom && notif.sender?.nom
+                      ? `${notif.sender.prenom} ${notif.sender.nom}`
+                      : notif.sender?.email || "Utilisateur inconnu"}
+                  </p>
+                  <p className="text-sm text-zinc-400">
+                    {notif.type === "like"
+                      ? "💙 a aimé votre produit"
+                      : `💬 a commenté : "${notif.message || '...' }"`}
+                  </p>
+                </div>
+
+                <p className="text-xs text-zinc-500 text-right whitespace-nowrap">
+                  {new Date(notif.created_at).toLocaleString("fr-FR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  })}
+                </p>
+              </div>
+
+              <button
+                onClick={() => router.push(`/produit/${notif.produit_id}`)}
+                className="text-sm text-blue-400 hover:underline self-start"
               >
                 Voir le produit
-              </Link>
-
-              <p className="text-xs text-gray-500 mt-1">
-                {new Date(notif.created_at).toLocaleString()}
-              </p>
+              </button>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </main>
   )
 }
