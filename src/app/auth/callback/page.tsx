@@ -13,14 +13,19 @@ export default function AuthCallback() {
   const router = useRouter()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
+    const confirm = async () => {
+      const { error } =
+        await supabase.auth.exchangeCodeForSession(window.location.href)
+
+      if (!error) {
         router.replace('/')
       } else {
         router.replace('/login')
       }
-    })
-  }, [])
+    }
 
-  return <p>Connexion en cours...</p>
+    confirm()
+  }, [router])
+
+  return <p>Confirmation de l’email en cours...</p>
 }
