@@ -19,7 +19,7 @@
     "clsx": "^2.1.1",
     "expo-notifications": "^0.31.4",
     "lucide-react": "^0.510.0",
-    "next": "15.3.2",
+    "next": "15.3.8",
     "next-auth": "^4.24.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
