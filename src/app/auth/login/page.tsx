@@ -20,19 +20,46 @@ export default function LoginPage() {
     setResendMessage('')
     setShowResend(false)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    // Tentative de connexion
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      if (error.message.includes('Email not confirmed')) {
+    if (signInError) {
+      if (signInError.message.includes('Email not confirmed')) {
         setError('Veuillez confirmer votre adresse email avant de vous connecter.')
         setShowResend(true)
       } else {
-        setError(error.message)
+        setError(signInError.message)
       }
       setLoading(false)
-    } else {
-      router.push('/')
+      return
     }
+
+    // Récupérer la session à jour après confirmation
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      setError('Erreur lors de la récupération de la session.')
+      setLoading(false)
+      return
+    }
+
+    const user = sessionData.session?.user
+
+    if (!user) {
+      setError('Impossible de récupérer les informations utilisateur.')
+      setLoading(false)
+      return
+    }
+
+    if (!user.email_confirmed_at) {
+      // Email non confirmé → message + possibilité de renvoyer
+      setError('Veuillez confirmer votre adresse email avant de vous connecter.')
+      setShowResend(true)
+      setLoading(false)
+      return
+    }
+
+    // Email confirmé → redirection vers l’accueil
+    router.replace('/')
   }
 
   const handleResendConfirmation = async () => {
