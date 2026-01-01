@@ -20,29 +20,19 @@ export default function LoginPage() {
     setResendMessage('')
     setShowResend(false)
 
-    // Tentative de connexion
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-    if (signInError) {
-      if (signInError.message.includes('Email not confirmed')) {
-        setError('Veuillez confirmer votre adresse email avant de vous connecter.')
-        setShowResend(true)
-      } else {
-        setError(signInError.message)
-      }
+    if (error) {
+      // Mauvais identifiants, user inexistant, etc.
+      setError(error.message)
       setLoading(false)
       return
     }
 
-    // Récupérer la session à jour après confirmation
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    if (sessionError) {
-      setError('Erreur lors de la récupération de la session.')
-      setLoading(false)
-      return
-    }
-
-    const user = sessionData.session?.user
+    const user = data.user
 
     if (!user) {
       setError('Impossible de récupérer les informations utilisateur.')
@@ -50,27 +40,30 @@ export default function LoginPage() {
       return
     }
 
+    // ✅ VRAIE vérification de confirmation email
     if (!user.email_confirmed_at) {
-      // Email non confirmé → message + possibilité de renvoyer
       setError('Veuillez confirmer votre adresse email avant de vous connecter.')
       setShowResend(true)
       setLoading(false)
       return
     }
 
-    // Email confirmé → redirection vers l’accueil
+    // ✅ Tout est OK
     router.replace('/')
   }
 
   const handleResendConfirmation = async () => {
     setLoading(true)
-    setResendMessage('')
     setError('')
+    setResendMessage('')
 
-    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    })
 
     if (error) {
-      setResendMessage("Erreur lors de l'envoi : " + error.message)
+      setError("Erreur lors de l'envoi : " + error.message)
     } else {
       setResendMessage('Email de confirmation renvoyé avec succès.')
     }
@@ -84,7 +77,9 @@ export default function LoginPage() {
         <h2 className="text-2xl font-bold text-center">Connexion</h2>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        {resendMessage && <p className="text-green-500 text-sm text-center">{resendMessage}</p>}
+        {resendMessage && (
+          <p className="text-green-500 text-sm text-center">{resendMessage}</p>
+        )}
 
         <input
           type="email"
