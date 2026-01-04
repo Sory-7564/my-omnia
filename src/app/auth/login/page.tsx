@@ -20,6 +20,7 @@ export default function LoginPage() {
     setResendMessage('')
     setShowResend(false)
 
+    // Connexion avec email + mot de passe
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -40,7 +41,7 @@ export default function LoginPage() {
       return
     }
 
-    // ✅ VRAIE vérification de confirmation email
+    // ✅ Vérification email confirmé
     if (!user.email_confirmed_at) {
       setError('Veuillez confirmer votre adresse email avant de vous connecter.')
       setShowResend(true)
@@ -48,8 +49,8 @@ export default function LoginPage() {
       return
     }
 
-    // ✅ Tout est OK
-    router.replace('/')
+    // ✅ Email confirmé → redirection vers callback Supabase pour créer la session
+    router.replace('/auth/callback')
   }
 
   const handleResendConfirmation = async () => {
