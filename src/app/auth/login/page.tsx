@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,14 +21,12 @@ export default function LoginPage() {
     setResendMessage('')
     setShowResend(false)
 
-    // Connexion avec email + mot de passe
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (error) {
-      // Mauvais identifiants, user inexistant, etc.
       setError(error.message)
       setLoading(false)
       return
@@ -36,21 +35,21 @@ export default function LoginPage() {
     const user = data.user
 
     if (!user) {
-      setError('Impossible de récupérer les informations utilisateur.')
+      setError("Impossible de récupérer les informations utilisateur.")
       setLoading(false)
       return
     }
 
-    // ✅ Vérification email confirmé
+    // ✅ Vérification réelle de la confirmation email
     if (!user.email_confirmed_at) {
-      setError('Veuillez confirmer votre adresse email avant de vous connecter.')
+      setError("Veuillez confirmer votre adresse email avant de vous connecter.")
       setShowResend(true)
       setLoading(false)
       return
     }
 
-    // ✅ Email confirmé → redirection vers callback Supabase pour créer la session
-    router.replace('/auth/callback')
+    // ✅ Login OK → la session existe déjà
+    router.replace('/')
   }
 
   const handleResendConfirmation = async () => {
@@ -66,7 +65,7 @@ export default function LoginPage() {
     if (error) {
       setError("Erreur lors de l'envoi : " + error.message)
     } else {
-      setResendMessage('Email de confirmation renvoyé avec succès.')
+      setResendMessage("Email de confirmation renvoyé avec succès.")
     }
 
     setLoading(false)
@@ -74,12 +73,20 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-      <form onSubmit={handleLogin} className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4">
+      <form
+        onSubmit={handleLogin}
+        className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4"
+      >
         <h2 className="text-2xl font-bold text-center">Connexion</h2>
 
-        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {error && (
+          <p className="text-red-500 text-sm text-center">{error}</p>
+        )}
+
         {resendMessage && (
-          <p className="text-green-500 text-sm text-center">{resendMessage}</p>
+          <p className="text-green-500 text-sm text-center">
+            {resendMessage}
+          </p>
         )}
 
         <input
@@ -127,4 +134,4 @@ export default function LoginPage() {
       </form>
     </div>
   )
-}
+          }
