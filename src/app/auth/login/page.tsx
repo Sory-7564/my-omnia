@@ -1,17 +1,26 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const confirmed = searchParams.get('confirmed')
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showResend, setShowResend] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
+
+  useEffect(() => {
+    if (confirmed) {
+      setResendMessage("Email confirmé avec succès ! Tu peux maintenant te connecter.")
+    }
+  }, [confirmed])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,7 +51,7 @@ export default function LoginPage() {
       return
     }
 
-    // ✅ Login OK
+    // Login OK
     router.replace('/')
   }
 
@@ -70,8 +79,23 @@ export default function LoginPage() {
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
         {resendMessage && <p className="text-green-500 text-sm text-center">{resendMessage}</p>}
 
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="w-full p-2 rounded bg-zinc-800" />
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mot de passe" required className="w-full p-2 rounded bg-zinc-800" />
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="Email"
+          required
+          className="w-full p-2 rounded bg-zinc-800"
+        />
+
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Mot de passe"
+          required
+          className="w-full p-2 rounded bg-zinc-800"
+        />
 
         <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
           {loading ? 'Connexion...' : 'Se connecter'}
@@ -84,9 +108,10 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-sm text-gray-400">
-          Pas encore inscrit ? <a href="/auth/register" className="text-blue-400 underline">Créer un compte</a>
+          Pas encore inscrit ?{' '}
+          <a href="/auth/register" className="text-blue-400 underline">Créer un compte</a>
         </p>
       </form>
     </div>
   )
-             }
+            }
