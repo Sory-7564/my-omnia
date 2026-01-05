@@ -6,9 +6,9 @@ import { supabase } from '@/lib/supabase'
 
 export default function RegisterPage() {
   const router = useRouter()
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   const [formData, setFormData] = useState({
     nom: '',
@@ -28,16 +28,9 @@ export default function RegisterPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setMessage('')
 
-    const {
-      nom,
-      prenom,
-      email,
-      password,
-      telephone,
-      ville,
-      quartier,
-    } = formData
+    const { nom, prenom, email, password, telephone, ville, quartier } = formData
 
     // 1️⃣ Création du compte Auth
     const { data, error: signUpError } = await supabase.auth.signUp({
@@ -61,7 +54,7 @@ export default function RegisterPage() {
       return
     }
 
-    // 2️⃣ Insertion des infos dans la table users
+    // 2️⃣ Insertion dans la table users
     const { error: insertError } = await supabase.from('users').insert({
       id: userId,
       nom,
@@ -78,11 +71,8 @@ export default function RegisterPage() {
       return
     }
 
-    alert(
-      "Compte créé avec succès 🎉\nUn email de confirmation vous a été envoyé."
-    )
-
-    router.replace('/auth/login')
+    setMessage("Compte créé ! Vérifie ton email pour confirmer ton compte.")
+    setLoading(false)
   }
 
   return (
@@ -93,79 +83,21 @@ export default function RegisterPage() {
       >
         <h2 className="text-2xl font-bold text-center">Créer un compte</h2>
 
-        {error && (
-          <p className="text-red-500 text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {message && <p className="text-green-500 text-sm text-center">{message}</p>}
 
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="text"
-            name="nom"
-            placeholder="Nom"
-            onChange={handleChange}
-            required
-            className="p-2 rounded bg-zinc-800"
-          />
-          <input
-            type="text"
-            name="prenom"
-            placeholder="Prénom"
-            onChange={handleChange}
-            required
-            className="p-2 rounded bg-zinc-800"
-          />
+          <input type="text" name="nom" placeholder="Nom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
+          <input type="text" name="prenom" placeholder="Prénom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
         </div>
 
-        <input
-          type="email"
-          name="email"
-          placeholder="Email"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
+        <input type="email" name="email" placeholder="Email" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input type="password" name="password" placeholder="Mot de passe" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input type="text" name="telephone" placeholder="Téléphone" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input type="text" name="ville" placeholder="Ville" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input type="text" name="quartier" placeholder="Quartier" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
 
-        <input
-          type="password"
-          name="password"
-          placeholder="Mot de passe"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
-        <input
-          type="text"
-          name="telephone"
-          placeholder="Téléphone"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
-        <input
-          type="text"
-          name="ville"
-          placeholder="Ville"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
-        <input
-          type="text"
-          name="quartier"
-          placeholder="Quartier"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-2 bg-blue-600 rounded font-semibold"
-        >
+        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
           {loading ? 'Création...' : 'Créer le compte'}
         </button>
 
@@ -177,5 +109,4 @@ export default function RegisterPage() {
         </p>
       </form>
     </div>
-  )
-          }
+  
