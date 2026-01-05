@@ -15,12 +15,26 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [showResend, setShowResend] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
+  const [sessionChecked, setSessionChecked] = useState(false)
 
   useEffect(() => {
+    // Afficher message si redirect depuis callback
     if (confirmed) {
       setResendMessage("Email confirmé avec succès ! Tu peux maintenant te connecter.")
     }
   }, [confirmed])
+
+  useEffect(() => {
+    // Rafraîchir la session pour récupérer user confirmé
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session?.user && !data.session.user.email_confirmed_at) {
+        setShowResend(true)
+      }
+      setSessionChecked(true)
+    }
+    checkSession()
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +85,11 @@ export default function LoginPage() {
     setLoading(false)
   }
 
+  if (!sessionChecked) {
+    // Optionnel : afficher un loader le temps de vérifier la session
+    return <p className="text-white text-center mt-10">Chargement...</p>
+  }
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
       <form onSubmit={handleLogin} className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4">
@@ -114,4 +133,4 @@ export default function LoginPage() {
       </form>
     </div>
   )
-            }
+}
