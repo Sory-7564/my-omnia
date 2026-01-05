@@ -1,31 +1,40 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-export default function AuthCallback() {
+export default function AuthCallbackPage() {
   const router = useRouter()
+  const [message, setMessage] = useState(
+    "Confirmation de l’email en cours..."
+  )
 
   useEffect(() => {
-    const confirm = async () => {
-      const { error } =
-        await supabase.auth.exchangeCodeForSession(window.location.href)
+    const handleAuth = async () => {
+      /**
+       * Supabase récupère automatiquement le token présent dans l’URL
+       * et crée la session
+       */
+      const { data, error } = await supabase.auth.getSession()
 
-      if (!error) {
-        router.replace('/')
-      } else {
-        router.replace('/login')
+      if (error || !data.session) {
+        console.error('Erreur callback:', error)
+        setMessage("Erreur de confirmation. Veuillez vous reconnecter.")
+        setTimeout(() => router.replace('/auth/login'), 2000)
+        return
       }
+
+      // ✅ Email confirmé + session créée
+      router.replace('/')
     }
 
-    confirm()
+    handleAuth()
   }, [router])
 
-  return <p>Confirmation de l’email en cours...</p>
+  return (
+    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <p className="text-sm text-gray-300">{message}</p>
+    </div>
+  )
 }
