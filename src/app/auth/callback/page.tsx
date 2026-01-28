@@ -8,11 +8,13 @@ export default function AuthCallback() {
   const router = useRouter()
 
   useEffect(() => {
-    const confirm = async () => {
-      const { error } = await supabase.auth.getSession()
+    const handleCallback = async () => {
+      const { error } = await supabase.auth.exchangeCodeForSession(
+        window.location.href
+      )
 
       if (error) {
-        console.error('Callback error:', error.message)
+        console.error(error.message)
         router.replace('/auth/login')
         return
       }
@@ -20,7 +22,7 @@ export default function AuthCallback() {
       router.replace('/auth/login?confirmed=1')
     }
 
-    confirm()
+    handleCallback()
   }, [router])
 
   return (
