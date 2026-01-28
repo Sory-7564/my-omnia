@@ -1,48 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function CallbackPage() {
+export default function AuthCallback() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [message, setMessage] = useState('Confirmation en cours...')
 
   useEffect(() => {
-    const confirmEmail = async () => {
-      const access_token = searchParams.get('access_token')
-      const refresh_token = searchParams.get('refresh_token')
-
-      if (!access_token || !refresh_token) {
-        setMessage("Impossible de confirmer l'e-mail. Lien invalide.")
-        return
-      }
-
-      // On met la session pour que Supabase confirme l'utilisateur
-      const { error } = await supabase.auth.setSession({
-        access_token,
-        refresh_token
-      })
+    const confirm = async () => {
+      const { error } = await supabase.auth.getSession()
 
       if (error) {
-        setMessage("Erreur lors de la confirmation : " + error.message)
+        console.error('Callback error:', error.message)
+        router.replace('/auth/login')
         return
       }
 
-      setMessage("Email confirmé avec succès ! Redirection...")
-      // Laisser l'utilisateur voir le message 2s puis rediriger
-      setTimeout(() => {
-        router.replace('/auth/login?confirmed=1')
-      }, 2000)
+      router.replace('/auth/login?confirmed=1')
     }
 
-    confirmEmail()
-  }, [searchParams, router])
+    confirm()
+  }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black text-white px-4">
-      <p className="text-center text-lg">{message}</p>
+    <div className="min-h-screen flex items-center justify-center text-white">
+      Confirmation de l’email en cours...
     </div>
   )
 }
