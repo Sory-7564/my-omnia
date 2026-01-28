@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function RegisterPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -87,26 +85,20 @@ export default function RegisterPage() {
         {message && <p className="text-green-500 text-sm text-center">{message}</p>}
 
         <div className="grid grid-cols-2 gap-2">
-          <input type="text" name="nom" placeholder="Nom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
-          <input type="text" name="prenom" placeholder="Prénom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
+          <input name="nom" placeholder="Nom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
+          <input name="prenom" placeholder="Prénom" onChange={handleChange} required className="p-2 rounded bg-zinc-800" />
         </div>
 
-        <input type="email" name="email" placeholder="Email" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
-        <input type="password" name="password" placeholder="Mot de passe" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
-        <input type="text" name="telephone" placeholder="Téléphone" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
-        <input type="text" name="ville" placeholder="Ville" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
-        <input type="text" name="quartier" placeholder="Quartier" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input name="email" type="email" placeholder="Email" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input name="password" type="password" placeholder="Mot de passe" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input name="telephone" placeholder="Téléphone" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input name="ville" placeholder="Ville" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
+        <input name="quartier" placeholder="Quartier" onChange={handleChange} required className="w-full p-2 rounded bg-zinc-800" />
 
-        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
+        <button disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
           {loading ? 'Création...' : 'Créer le compte'}
         </button>
-
-        <p className="text-center text-sm text-gray-400">
-          Déjà un compte ?{' '}
-          <a href="/auth/login" className="text-blue-400 underline">
-            Se connecter
-          </a>
-        </p>
       </form>
     </div>
-  
+  )
+}
