@@ -13,37 +13,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [showResend, setShowResend] = useState(false)
-  const [resendMessage, setResendMessage] = useState('')
-  const [sessionChecked, setSessionChecked] = useState(false)
 
   useEffect(() => {
-    // Afficher message si redirect depuis callback
     if (confirmed) {
-      setResendMessage("Email confirmé avec succès ! Tu peux maintenant te connecter.")
+      setMessage("Email confirmé avec succès ! Tu peux te connecter.")
     }
   }, [confirmed])
-
-  useEffect(() => {
-    // Rafraîchir la session pour récupérer user confirmé
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session?.user && !data.session.user.email_confirmed_at) {
-        setShowResend(true)
-      }
-      setSessionChecked(true)
-    }
-    checkSession()
-  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setResendMessage('')
     setShowResend(false)
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
     if (error) {
       setError(error.message)
@@ -51,43 +39,30 @@ export default function LoginPage() {
       return
     }
 
-    const user = data.user
-    if (!user) {
-      setError("Impossible de récupérer les infos utilisateur.")
-      setLoading(false)
-      return
-    }
-
-    if (!user.email_confirmed_at) {
-      setError("Veuillez confirmer votre email avant de vous connecter.")
+    if (!data.user?.email_confirmed_at) {
+      setError("Veuillez confirmer votre email.")
       setShowResend(true)
       setLoading(false)
       return
     }
 
-    // Login OK
     router.replace('/')
   }
 
-  const handleResendConfirmation = async () => {
+  const resendConfirmation = async () => {
     setLoading(true)
-    setError('')
-    setResendMessage('')
-
-    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    })
 
     if (error) {
-      setError("Erreur lors de l'envoi : " + error.message)
+      setError(error.message)
     } else {
-      setResendMessage("Email de confirmation renvoyé avec succès.")
+      setMessage("Email de confirmation renvoyé.")
     }
 
     setLoading(false)
-  }
-
-  if (!sessionChecked) {
-    // Optionnel : afficher un loader le temps de vérifier la session
-    return <p className="text-white text-center mt-10">Chargement...</p>
   }
 
   return (
@@ -96,40 +71,20 @@ export default function LoginPage() {
         <h2 className="text-2xl font-bold text-center">Connexion</h2>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        {resendMessage && <p className="text-green-500 text-sm text-center">{resendMessage}</p>}
+        {message && <p className="text-green-500 text-sm text-center">{message}</p>}
 
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="Email"
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
+        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="w-full p-2 rounded bg-zinc-800" />
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mot de passe" required className="w-full p-2 rounded bg-zinc-800" />
 
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="Mot de passe"
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
-        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
+        <button disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold">
           {loading ? 'Connexion...' : 'Se connecter'}
         </button>
 
         {showResend && (
-          <button type="button" onClick={handleResendConfirmation} className="w-full py-2 bg-yellow-600 rounded font-semibold">
+          <button type="button" onClick={resendConfirmation} className="w-full py-2 bg-yellow-600 rounded font-semibold">
             Renvoyer l’email de confirmation
           </button>
         )}
-
-        <p className="text-center text-sm text-gray-400">
-          Pas encore inscrit ?{' '}
-          <a href="/auth/register" className="text-blue-400 underline">Créer un compte</a>
-        </p>
       </form>
     </div>
   )
