@@ -2,27 +2,25 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
 
   useEffect(() => {
     const handleCallback = async () => {
-      // 🔑 Récupère la session depuis l’URL
-      const { data, error } = await supabase.auth.getSession()
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
 
-      if (error) {
-        console.error(error)
-        router.replace('/auth/login')
-        return
-      }
-
-      if (data.session) {
-        // ✅ Email confirmé + session active
-        router.replace('/auth/login?confirmed=true')
-      } else {
-        // ❌ Pas de session → login
+        if (session) {
+          // ✅ Session active → redirection vers la page principale
+          router.replace('/')
+        } else {
+          router.replace('/auth/login')
+        }
+      } catch (err) {
+        console.error(err)
         router.replace('/auth/login')
       }
     }
