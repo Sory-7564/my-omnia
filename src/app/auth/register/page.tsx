@@ -36,14 +36,14 @@ export default function RegisterPage() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`, // Page callback gère la redirection
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       })
 
       if (signUpError) throw signUpError
       if (!data.user?.id) throw new Error("Impossible de créer l'utilisateur.")
 
-      // 2️⃣ Insertion dans la table users (optionnel, OK de le faire maintenant)
+      // 2️⃣ Insertion dans la table users
       const { error: insertError } = await supabase
         .from('users')
         .insert({
