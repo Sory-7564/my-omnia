@@ -1,6 +1,6 @@
 import { createClient, PostgrestError } from '@supabase/supabase-js'
 import { faker } from '@faker-js/faker'
-import { supabase } from '../../lib/supabaseClient'
+import { supabase } from '@/lib/supabaseClient'
 
 
 interface Produit {
