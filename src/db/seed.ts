@@ -1,7 +1,12 @@
 import { createClient, PostgrestError } from '@supabase/supabase-js'
 import { faker } from '@faker-js/faker'
-import { supabase } from '@/lib/supabaseClient'
+import 'dotenv/config' // IMPORTANT pour les scripts Node
 
+// 🔐 Client Supabase BACKEND (service role)
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 interface Produit {
   nom: string
@@ -18,10 +23,10 @@ interface ImageProduit {
   type: 'image' | 'video'
 }
 
-
 async function seed(): Promise<void> {
   try {
-    const userId = '00000000-0000-0000-0000-000000000000' // Remplace par un vrai user
+    const userId = '00000000-0000-0000-0000-000000000000' 
+    // ⚠️ IMPORTANT : ce user doit exister dans auth.users
 
     const categories = [
       'Électronique', 'Vêtements', 'Maison', 'Auto', 'Gaming', 'Sport',
@@ -44,10 +49,12 @@ async function seed(): Promise<void> {
       .select()
 
     if (produitsError) throw produitsError
+
     console.log(`✅ ${insertedProduits.length} produits insérés`)
 
     for (const produit of insertedProduits) {
       const nbImages = faker.number.int({ min: 1, max: 3 })
+
       const images: ImageProduit[] = Array.from({ length: nbImages }, () => ({
         produit_id: produit.id,
         url: `https://placehold.co/600x400?text=${encodeURIComponent(produit.nom)}`,
@@ -62,7 +69,7 @@ async function seed(): Promise<void> {
     }
 
     console.log('✅ Images associées ajoutées')
-    console.log('🎉 Seeding terminé')
+    console.log('🎉 Seeding terminé avec succès')
   } catch (err) {
     const error = err as PostgrestError
     console.error('❌ Erreur lors du seeding:', error.message)
