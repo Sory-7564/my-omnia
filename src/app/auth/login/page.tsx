@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
 
-  // ✅ Bloque /login si déjà connecté + écoute confirmation email
+  // ✅ Bloque /auth/login si déjà connecté + écoute confirmation email
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
@@ -142,7 +142,7 @@ export default function LoginPage() {
             Pas encore de compte ?{' '}
             <button
               type="button"
-              onClick={() => router.push('/register')}
+              onClick={() => router.push('/auth/register')}
               className="text-blue-500 font-medium hover:underline"
             >
               S’inscrire
