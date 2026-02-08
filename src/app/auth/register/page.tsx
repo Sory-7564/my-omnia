@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import Link from 'next/link'
 
 export default function RegisterPage() {
 const [loading, setLoading] = useState(false)
@@ -139,6 +140,15 @@ className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4"
     >  
       {loading ? 'Création...' : 'Créer le compte'}  
     </button>  
+  <p className="text-center text-sm text-gray-400">
+  Déjà un compte ?{' '}
+  <Link
+    href="/auth/login"
+    className="font-semibold text-blue-500 hover:underline"
+  >
+    Se connecter
+  </Link>
+</p>
   </form>  
 </div>
 
