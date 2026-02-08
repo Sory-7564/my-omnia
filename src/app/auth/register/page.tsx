@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function RegisterPage() {
@@ -41,7 +42,9 @@ export default function RegisterPage() {
       })
 
       if (signUpError) throw signUpError
-      if (!data.user?.id) throw new Error("Impossible de créer l'utilisateur.")
+      if (!data.user?.id) {
+        throw new Error("Impossible de créer l'utilisateur.")
+      }
 
       // 2️⃣ Insertion dans la table users
       const { error: insertError } = await supabase
@@ -60,7 +63,14 @@ export default function RegisterPage() {
 
       setMessage("Compte créé ! Vérifie ton email pour confirmer ton compte.")
     } catch (err: any) {
-      setError(err.message)
+      if (
+        err.message?.includes('already registered') ||
+        err.message?.includes('duplicate key')
+      ) {
+        setError("Cet email est déjà utilisé. Connecte-toi.")
+      } else {
+        setError("Une erreur est survenue. Réessaie.")
+      }
     } finally {
       setLoading(false)
     }
@@ -74,8 +84,12 @@ export default function RegisterPage() {
       >
         <h2 className="text-2xl font-bold text-center">Créer un compte</h2>
 
-        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        {message && <p className="text-green-500 text-sm text-center">{message}</p>}
+        {error && (
+          <p className="text-red-500 text-sm text-center">{error}</p>
+        )}
+        {message && (
+          <p className="text-green-500 text-sm text-center">{message}</p>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <input
@@ -102,6 +116,7 @@ export default function RegisterPage() {
           required
           className="w-full p-2 rounded bg-zinc-800"
         />
+
         <input
           name="password"
           type="password"
@@ -110,6 +125,7 @@ export default function RegisterPage() {
           required
           className="w-full p-2 rounded bg-zinc-800"
         />
+
         <input
           name="telephone"
           placeholder="Téléphone"
@@ -117,6 +133,7 @@ export default function RegisterPage() {
           required
           className="w-full p-2 rounded bg-zinc-800"
         />
+
         <input
           name="ville"
           placeholder="Ville"
@@ -124,6 +141,7 @@ export default function RegisterPage() {
           required
           className="w-full p-2 rounded bg-zinc-800"
         />
+
         <input
           name="quartier"
           placeholder="Quartier"
@@ -134,10 +152,21 @@ export default function RegisterPage() {
 
         <button
           disabled={loading}
-          className="w-full py-2 bg-blue-600 rounded font-semibold"
+          className="w-full py-2 bg-blue-600 rounded font-semibold disabled:opacity-60"
         >
           {loading ? 'Création...' : 'Créer le compte'}
         </button>
+
+        {/* 🔗 Lien connexion */}
+        <p className="text-center text-sm text-gray-400">
+          Déjà un compte ?{' '}
+          <Link
+            href="/auth/login"
+            className="font-semibold text-blue-500 hover:underline"
+          >
+            Se connecter
+          </Link>
+        </p>
       </form>
     </div>
   )
