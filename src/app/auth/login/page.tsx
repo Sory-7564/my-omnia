@@ -136,19 +136,19 @@ export default function LoginPage() {
           Mot de passe oublié ?
         </button>
 
-        {/* 🆕 Inscription */}
-        <div className="pt-2 border-t border-zinc-800">
-          <p className="text-sm text-center text-zinc-400">
-            Pas encore de compte ?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/auth/register')}
-              className="text-blue-500 font-medium hover:underline"
-            >
-              S’inscrire
-            </button>
-          </p>
-        </div>
+{/* 🆕 Inscription */}
+<div className="text-center mt-6">
+  <p>
+    Pas encore de compte ?{' '}
+    <button
+      type="button"
+      onClick={() => router.push('/auth/register')}
+      className="text-blue-500 font-medium hover:underline"
+    >
+      S'inscrire
+    </button>
+  </p>
+</div>
       </form>
     </div>
   )
