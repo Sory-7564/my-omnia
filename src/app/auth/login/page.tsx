@@ -2,18 +2,23 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
 export default function LoginPage() {
   const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
 
-  // ✅ Bloque /auth/login si déjà connecté + écoute confirmation email
   useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
@@ -34,7 +39,9 @@ export default function LoginPage() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -42,6 +49,11 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     setInfo('')
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -62,7 +74,6 @@ export default function LoginPage() {
     setLoading(false)
   }
 
-  // ✅ Mot de passe oublié
   const handleResetPassword = async () => {
     if (!email) {
       setError('Entre ton email pour réinitialiser le mot de passe.')
@@ -72,6 +83,11 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     setInfo('')
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${location.origin}/reset-password`,
@@ -127,7 +143,6 @@ export default function LoginPage() {
           {loading ? 'Connexion...' : 'Se connecter'}
         </button>
 
-        {/* 🔐 Mot de passe oublié */}
         <button
           type="button"
           onClick={handleResetPassword}
@@ -136,19 +151,18 @@ export default function LoginPage() {
           Mot de passe oublié ?
         </button>
 
-{/* 🆕 Inscription */}
-<div className="text-center mt-6">
-  <p>
-    Pas encore de compte ?{' '}
-    <button
-      type="button"
-      onClick={() => router.push('/auth/register')}
-      className="text-blue-500 font-medium hover:underline"
-    >
-      S'inscrire
-    </button>
-  </p>
-</div>
+        <div className="text-center mt-6">
+          <p>
+            Pas encore de compte ?{' '}
+            <button
+              type="button"
+              onClick={() => router.push('/auth/register')}
+              className="text-blue-500 font-medium hover:underline"
+            >
+              S'inscrire
+            </button>
+          </p>
+        </div>
       </form>
     </div>
   )
