@@ -2,19 +2,29 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
+
 export const dynamic = 'force-dynamic'
+
 export default function AuthCallbackPage() {
   const router = useRouter()
 
   useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
     const handleCallback = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
+
         if (error) throw error
 
         if (session) {
-          // ✅ Session active → redirection vers la page principale
           router.replace('/')
         } else {
           router.replace('/auth/login')
