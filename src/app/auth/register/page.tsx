@@ -1,14 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 
 export default function RegisterPage() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
-
   const [formData, setFormData] = useState({
     nom: '',
     prenom: '',
@@ -18,6 +14,10 @@ export default function RegisterPage() {
     ville: '',
     quartier: '',
   })
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -29,27 +29,18 @@ export default function RegisterPage() {
     setError('')
     setMessage('')
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const { nom, prenom, email, password, telephone, ville, quartier } =
-      formData
+    const { nom, prenom, email, password, telephone, ville, quartier } = formData
 
     try {
       // 1️⃣ Création du compte Auth
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+        options: { data: { nom, prenom, telephone, ville, quartier } },
       })
 
       if (signUpError) throw signUpError
-      if (!data.user?.id)
-        throw new Error("Impossible de créer l'utilisateur.")
+      if (!data.user?.id) throw new Error("Impossible de créer l'utilisateur.")
 
       // 2️⃣ Insertion dans la table users
       const { error: insertError } = await supabase.from('users').insert({
@@ -64,9 +55,7 @@ export default function RegisterPage() {
 
       if (insertError) throw insertError
 
-      setMessage(
-        'Compte créé ! Vérifie ton email pour confirmer ton compte.'
-      )
+      setMessage("Compte créé ! Vérifie ton email pour confirmer ton compte.")
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -75,11 +64,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4"
-      >
+    <div className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4 mx-auto mt-10">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <h2 className="text-2xl font-bold text-center">Créer un compte</h2>
 
         {error && (
@@ -92,59 +78,63 @@ export default function RegisterPage() {
         <div className="grid grid-cols-2 gap-2">
           <input
             name="nom"
-            placeholder="Nom"
+            value={formData.nom}
             onChange={handleChange}
+            placeholder="Nom"
+            className="p-2 rounded bg-zinc-800 text-white"
             required
-            className="p-2 rounded bg-zinc-800"
           />
           <input
             name="prenom"
-            placeholder="Prénom"
+            value={formData.prenom}
             onChange={handleChange}
+            placeholder="Prénom"
+            className="p-2 rounded bg-zinc-800 text-white"
             required
-            className="p-2 rounded bg-zinc-800"
+          />
+          <input
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="Email"
+            className="p-2 rounded bg-zinc-800 text-white"
+            required
+          />
+          <input
+            name="password"
+            type="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Mot de passe"
+            className="p-2 rounded bg-zinc-800 text-white"
+            required
+          />
+          <input
+            name="telephone"
+            value={formData.telephone}
+            onChange={handleChange}
+            placeholder="Téléphone"
+            className="p-2 rounded bg-zinc-800 text-white"
+          />
+          <input
+            name="ville"
+            value={formData.ville}
+            onChange={handleChange}
+            placeholder="Ville"
+            className="p-2 rounded bg-zinc-800 text-white"
+          />
+          <input
+            name="quartier"
+            value={formData.quartier}
+            onChange={handleChange}
+            placeholder="Quartier"
+            className="p-2 rounded bg-zinc-800 text-white"
           />
         </div>
 
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="Mot de passe"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-        <input
-          name="telephone"
-          placeholder="Téléphone"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-        <input
-          name="ville"
-          placeholder="Ville"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-        <input
-          name="quartier"
-          placeholder="Quartier"
-          onChange={handleChange}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
-
         <button
+          type="submit"
           disabled={loading}
           className="w-full py-2 bg-blue-600 rounded font-semibold disabled:opacity-50"
         >
@@ -153,10 +143,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-gray-400">
           Déjà un compte ?{' '}
-          <Link
-            href="/auth/login"
-            className="font-semibold text-blue-500 hover:underline"
-          >
+          <Link className="text-blue-400" href="/auth/login">
             Se connecter
           </Link>
         </p>
