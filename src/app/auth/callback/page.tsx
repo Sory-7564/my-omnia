@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     const supabase = createClient(
@@ -16,27 +17,18 @@ export default function AuthCallbackPage() {
     )
 
     const handleCallback = async () => {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession()
+      const code = searchParams.get('code')
 
-        if (error) throw error
-
-        if (session) {
-          router.replace('/')
-        } else {
-          router.replace('/auth/login')
-        }
-      } catch (err) {
-        console.error(err)
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(code)
+        router.replace('/')
+      } else {
         router.replace('/auth/login')
       }
     }
 
     handleCallback()
-  }, [router])
+  }, [router, searchParams])
 
   return (
     <div className="min-h-screen flex items-center justify-center text-white bg-black">
