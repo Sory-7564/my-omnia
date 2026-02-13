@@ -89,7 +89,8 @@ export default function LoginPage() {
     )
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${location.origin}/reset-password`,
+      // ✅ CORRECTION ICI
+      redirectTo: `${location.origin}/auth/reset-password`,
     })
 
     if (error) {
@@ -137,11 +138,19 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 rounded font-semibold disabled:opacity-50">
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2 bg-blue-600 rounded font-semibold disabled:opacity-50"
+        >
           {loading ? 'Connexion...' : 'Se connecter'}
         </button>
 
-        <button type="button" onClick={handleResetPassword} className="w-full text-sm text-blue-500 hover:underline">
+        <button
+          type="button"
+          onClick={handleResetPassword}
+          className="w-full text-sm text-blue-500 hover:underline"
+        >
           Mot de passe oublié ?
         </button>
 
@@ -160,4 +169,4 @@ export default function LoginPage() {
       </form>
     </div>
   )
-    }
+        }
