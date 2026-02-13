@@ -1,63 +1,28 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { useState } from "react"
+import { supabase } from "@/lib/supabaseClient"
+import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const router = useRouter()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
 
-  useEffect(() => {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        router.replace('/')
-      }
-    }
-
-    checkSession()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (
-        (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') &&
-        session
-      ) {
-        router.replace('/')
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
+  // 👁️ state affichage mot de passe
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setError('')
-    setInfo('')
+    setError(null)
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      password,
+      password
     })
 
     if (error) {
@@ -66,103 +31,56 @@ export default function LoginPage() {
       return
     }
 
-    if (data.session) {
-      router.replace('/')
-      return
-    }
-
     setLoading(false)
-  }
-
-  const handleResetPassword = async () => {
-    if (!email) {
-      setError('Entre ton email pour réinitialiser le mot de passe.')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-    setInfo('')
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${location.origin}/reset-password`,
-    })
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setInfo('Email de réinitialisation envoyé 📩')
-    }
-
-    setLoading(false)
+    router.push("/dashboard")
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center bg-black text-white">
       <form
         onSubmit={handleLogin}
-        className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4"
+        className="bg-zinc-900 p-6 rounded-xl w-[350px] flex flex-col gap-4"
       >
-        <h2 className="text-2xl font-bold text-center">Connexion</h2>
+        <h1 className="text-xl font-bold text-center">Connexion</h1>
 
-        {error && (
-          <p className="text-red-500 text-sm text-center">{error}</p>
-        )}
-        {info && (
-          <p className="text-green-500 text-sm text-center">{info}</p>
-        )}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
 
         <input
           type="email"
+          placeholder="Email"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          placeholder="Email"
           required
           className="w-full p-2 rounded bg-zinc-800"
         />
 
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="Mot de passe"
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
+        {/* 👁️ mot de passe */}
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Mot de passe"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            className="w-full p-2 pr-10 rounded bg-zinc-800"
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-2 top-2 text-gray-400"
+          >
+            {showPassword ? "🙈" : "👁️"}
+          </button>
+        </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2 bg-blue-600 rounded font-semibold disabled:opacity-50"
+          className="bg-white text-black p-2 rounded font-semibold"
         >
-          {loading ? 'Connexion...' : 'Se connecter'}
+          {loading ? "Connexion..." : "Se connecter"}
         </button>
-
-        <button
-          type="button"
-          onClick={handleResetPassword}
-          className="w-full text-sm text-blue-500 hover:underline"
-        >
-          Mot de passe oublié ?
-        </button>
-
-        <div className="text-center mt-6">
-          <p>
-            Pas encore de compte ?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/auth/register')}
-              className="text-blue-500 font-medium hover:underline"
-            >
-              S'inscrire
-            </button>
-          </p>
-        </div>
       </form>
     </div>
   )
