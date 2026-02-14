@@ -1,14 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const token = searchParams.get('token') // récupère le token du lien email
-
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,34 +13,18 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  // On utilise le token pour créer une session temporaire
   useEffect(() => {
-    const verifyToken = async () => {
-      if (!token) {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      // Si pas de session (lien invalide), on affiche un message
+      if (!data.session) {
         setError('Lien invalide ou expiré.')
-        setChecking(false)
-        return
       }
-
-      const { data, error } = await supabase.auth.verifyOtp({ token, type: 'recovery' })
-
-      if (error || !data.session) {
-        setError('Lien invalide ou expiré.')
-      } else {
-        // On met en place la session temporaire pour que updateUser fonctionne
-        await supabase.auth.setSession(data.session)
-      }
-
       setChecking(false)
     }
 
-    verifyToken()
-  }, [token, supabase])
+    checkSession()
+  }, [])
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,18 +37,15 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true)
-
+    // On met à jour le mot de passe de l'utilisateur connecté via la session temporaire
     const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
       setError(error.message)
     } else {
       setSuccess('Mot de passe mis à jour avec succès 🎉')
-      setTimeout(() => {
-        router.push('/auth/login')
-      }, 2000)
+      setTimeout(() => router.push('/auth/login'), 2000)
     }
-
     setLoading(false)
   }
 
@@ -85,9 +63,7 @@ export default function ResetPasswordPage() {
         onSubmit={handleUpdatePassword}
         className="w-full max-w-md bg-zinc-900 p-6 rounded-xl space-y-4"
       >
-        <h2 className="text-2xl font-bold text-center">
-          Nouveau mot de passe
-        </h2>
+        <h2 className="text-2xl font-bold text-center">Nouveau mot de passe</h2>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
         {success && <p className="text-green-500 text-sm text-center">{success}</p>}
