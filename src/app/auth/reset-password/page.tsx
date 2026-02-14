@@ -1,38 +1,34 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token') // <-- récupère le token du lien email
 
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
-  const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // Vérifie la session venant du lien email
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-
-      if (!data.session) {
-        setError('Lien invalide ou expiré.')
-      }
-
-      setChecking(false)
-    }
-
-    checkSession()
-  }, [])
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+    if (!token) {
+      setError('Lien invalide ou expiré.')
+      return
+    }
 
     if (password !== confirm) {
       setError('Les mots de passe ne correspondent pas.')
@@ -41,9 +37,11 @@ export default function ResetPasswordPage() {
 
     setLoading(true)
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    })
+    // On utilise le token pour mettre à jour le mot de passe
+    const { error } = await supabase.auth.updateUser(
+      { password },
+      { token } // <-- très important !
+    )
 
     if (error) {
       setError(error.message)
@@ -58,14 +56,6 @@ export default function ResetPasswordPage() {
     setLoading(false)
   }
 
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-white">
-        Vérification du lien...
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-black text-white px-4">
       <form
@@ -76,12 +66,8 @@ export default function ResetPasswordPage() {
           Nouveau mot de passe
         </h2>
 
-        {error && (
-          <p className="text-red-500 text-sm text-center">{error}</p>
-        )}
-        {success && (
-          <p className="text-green-500 text-sm text-center">{success}</p>
-        )}
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {success && <p className="text-green-500 text-sm text-center">{success}</p>}
 
         <input
           type="password"
