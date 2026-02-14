@@ -8,6 +8,8 @@ export default function ResetPasswordPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
@@ -16,7 +18,6 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
-      // Si pas de session (lien invalide), on affiche un message
       if (!data.session) {
         setError('Lien invalide ou expiré.')
       }
@@ -37,7 +38,6 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true)
-    // On met à jour le mot de passe de l'utilisateur connecté via la session temporaire
     const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
@@ -68,23 +68,43 @@ export default function ResetPasswordPage() {
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
         {success && <p className="text-green-500 text-sm text-center">{success}</p>}
 
-        <input
-          type="password"
-          placeholder="Nouveau mot de passe"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
+        {/* Nouveau mot de passe avec bouton 👁️ */}
+        <div className="relative">
+          <input
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Nouveau mot de passe"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            className="w-full p-2 rounded bg-zinc-800 pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-2 top-2 text-gray-400"
+          >
+            {showPassword ? '🙈' : '👁️'}
+          </button>
+        </div>
 
-        <input
-          type="password"
-          placeholder="Confirmer le mot de passe"
-          value={confirm}
-          onChange={e => setConfirm(e.target.value)}
-          required
-          className="w-full p-2 rounded bg-zinc-800"
-        />
+        {/* Confirmer le mot de passe avec bouton 👁️ */}
+        <div className="relative">
+          <input
+            type={showConfirm ? 'text' : 'password'}
+            placeholder="Confirmer le mot de passe"
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            required
+            className="w-full p-2 rounded bg-zinc-800 pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirm(!showConfirm)}
+            className="absolute right-2 top-2 text-gray-400"
+          >
+            {showConfirm ? '🙈' : '👁️'}
+          </button>
+        </div>
 
         <button
           type="submit"
