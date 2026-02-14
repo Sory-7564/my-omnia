@@ -1,17 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const token = searchParams.get('token') // <-- récupère le token du lien email
+  const token = searchParams.get('token') // récupère le token du lien email
 
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -20,15 +21,34 @@ export default function ResetPasswordPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
+  // On utilise le token pour créer une session temporaire
+  useEffect(() => {
+    const verifyToken = async () => {
+      if (!token) {
+        setError('Lien invalide ou expiré.')
+        setChecking(false)
+        return
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp({ token, type: 'recovery' })
+
+      if (error || !data.session) {
+        setError('Lien invalide ou expiré.')
+      } else {
+        // On met en place la session temporaire pour que updateUser fonctionne
+        await supabase.auth.setSession(data.session)
+      }
+
+      setChecking(false)
+    }
+
+    verifyToken()
+  }, [token, supabase])
+
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setSuccess('')
-
-    if (!token) {
-      setError('Lien invalide ou expiré.')
-      return
-    }
 
     if (password !== confirm) {
       setError('Les mots de passe ne correspondent pas.')
@@ -37,23 +57,26 @@ export default function ResetPasswordPage() {
 
     setLoading(true)
 
-    // On utilise le token pour mettre à jour le mot de passe
-    const { error } = await supabase.auth.updateUser(
-      { password },
-      { token } // <-- très important !
-    )
+    const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
       setError(error.message)
     } else {
       setSuccess('Mot de passe mis à jour avec succès 🎉')
-
       setTimeout(() => {
         router.push('/auth/login')
       }, 2000)
     }
 
     setLoading(false)
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white">
+        Vérification du lien...
+      </div>
+    )
   }
 
   return (
