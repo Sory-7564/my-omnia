@@ -151,7 +151,7 @@ export default function PublierPage() {
         >
           <option value="">Choisir une catégorie</option>
           {[
-            'Électronique', 'Vêtements', 'Maison', 'Auto', 'Gaming', 'Sport',
+            'Électronique', 'Vêtements', 'Chaussures' , 'Maison', 'Auto', 'Gaming', 'Sport',
             'Cuisine', 'Livres', 'Outils', 'Nourriture', 'Bijoux', 'Bricolage',
             'Animaux', 'Voitures', 'Autres'
           ].map((cat) => (
